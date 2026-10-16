@@ -1,0 +1,15 @@
+# Binaries
+get-done
+get-it-done
+result
+
+# Database & local data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# IDE / Editor
+.idea/
+.vscode/
+.DS_Store

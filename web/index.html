@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Get Done">
+  <meta name="theme-color" content="#191724">
+  <title>Get Done</title>
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span id="brand-logo" class="brand-logo-icon"></span>
+          <span>Get Done</span>
+        </div>
+        <!-- Security & Auth Dropdown Menu -->
+        <div class="dropdown" id="auth-dropdown-wrapper">
+          <button id="btn-auth-menu" class="btn-icon-subtle" title="Security & Password" style="padding: 4px 6px;">
+            <span id="icon-auth-lock"></span>
+          </button>
+          <div id="auth-menu" class="dropdown-menu">
+            <div class="dropdown-item" id="menu-change-password">Change Password</div>
+            <div class="dropdown-item danger" id="menu-lock-app">Lock Session</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-view="inbox">
+          <span class="icon" id="icon-nav-inbox"></span>
+          <span>Inbox</span>
+          <span class="count" id="count-inbox">0</span>
+        </a>
+        <a href="#" class="nav-item" data-view="upcoming">
+          <span class="icon" id="icon-nav-upcoming"></span>
+          <span>Upcoming</span>
+          <span class="count" id="count-upcoming">0</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-section-header">
+        <span>Projects</span>
+        <button id="btn-add-project" class="btn-icon-subtle" title="Add project"></button>
+      </div>
+
+      <div id="projects-tree" class="projects-tree">
+        <!-- Rendered via JavaScript -->
+      </div>
+    </aside>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="main-header">
+        <div class="view-title-group">
+          <button id="btn-menu-toggle" class="btn-icon-subtle btn-menu-toggle" title="Toggle Menu"></button>
+          <h1 id="view-title" class="view-title">Inbox</h1>
+        </div>
+
+        <div class="view-actions">
+          <!-- Sort Dropdown -->
+          <div class="dropdown">
+            <button id="btn-sort-dropdown" class="btn-dropdown" title="Sort options">
+              <span id="icon-sort"></span>
+              <span id="sort-label">Sort</span>
+            </button>
+            <div id="sort-menu" class="dropdown-menu">
+              <div class="dropdown-item active" data-sort="manual">Manual order</div>
+              <div class="dropdown-item" data-sort="date">Due date</div>
+              <div class="dropdown-item" data-sort="priority">Priority</div>
+              <div class="dropdown-item" data-sort="title">Alphabetical</div>
+            </div>
+          </div>
+
+          <!-- Project Actions (when viewing a project) -->
+          <div id="project-header-actions" style="display:none; gap:6px;">
+            <button id="btn-add-section" class="btn-secondary" style="font-size:0.8rem;">+ Section</button>
+            <button id="btn-delete-project" class="btn-icon-subtle" title="Delete project"></button>
+          </div>
+
+          <!-- View Options / Import-Export Menu -->
+          <div class="dropdown" id="view-more-dropdown">
+            <button id="btn-view-more" class="btn-icon-subtle" title="Options" style="width:32px; height:32px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center;">
+              <span id="icon-view-more"></span>
+            </button>
+            <div id="view-more-menu" class="dropdown-menu" style="min-width: 210px;">
+              <div class="dropdown-item" id="menu-undo-action" style="gap:8px; justify-content:flex-start;">
+                <span id="icon-undo-action"></span>
+                <span>Undo deletion (u)</span>
+              </div>
+              <div style="height:1px; background:var(--rp-border); margin:4px 0;"></div>
+              <div class="dropdown-item" id="menu-export-csv" style="gap:8px; justify-content:flex-start;">
+                <span id="icon-export-csv"></span>
+                <span>Export (Todoist CSV)</span>
+              </div>
+              <div class="dropdown-item" id="menu-import-csv" style="gap:8px; justify-content:flex-start;">
+                <span id="icon-import-csv"></span>
+                <span>Import (Todoist CSV)</span>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="input-import-csv" accept=".csv,text/csv" style="display:none;" />
+        </div>
+      </header>
+
+      <!-- Calendar Strip (Visible in Upcoming view) -->
+      <div id="calendar-strip" class="calendar-strip" style="display:none;">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Tasks Area -->
+      <div id="tasks-area" class="tasks-area">
+        <!-- Rendered via JavaScript -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Mobile Floating Action Button (FAB) to Add Task -->
+  <button id="btn-mobile-fab-add" class="mobile-fab" title="Add Task" aria-label="Add Task">
+    <span id="icon-fab-plus"></span>
+  </button>
+
+  <!-- Vim Status Bar -->
+  <footer class="statusbar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span id="vim-mode" class="vim-mode">-- NORMAL --</span>
+      <span id="status-position" class="mono">0 / 0</span>
+    </div>
+    <div class="statusbar-hints">
+      <span><kbd>j</kbd>/<kbd>k</kbd> nav</span>
+      <span><kbd>s</kbd> section</span>
+      <span><kbd>a</kbd> add</span>
+      <span><kbd>d</kbd> done</span>
+      <span><kbd>Space</kbd> select</span>
+      <span><kbd>/</kbd> search</span>
+      <span id="status-help-trigger" style="cursor: pointer;"><kbd>?</kbd> help</span>
+    </div>
+  </footer>
+
+  <!-- ----------------------------------------------------------------------
+       Task Detail Modal (Todoist Style)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-task-detail" class="modal-overlay">
+    <div class="detail-modal">
+      <div class="detail-header">
+        <div class="detail-drag-handle"></div>
+        <div class="detail-header-row">
+          <button id="detail-btn-close" class="btn-icon-subtle detail-header-circle-btn" title="Close (Esc)"></button>
+          <button type="button" id="detail-btn-back" class="detail-back-btn" style="display:none;" title="Parent task">
+            <span class="back-arrow">‹</span>
+            <span id="detail-parent-title" class="parent-title-text"></span>
+          </button>
+          <div style="flex: 1;"></div>
+        </div>
+      </div>
+
+      <div class="detail-body">
+        <div class="detail-main">
+          <!-- Primary Card: Title + (Mobile meta rows) + Description -->
+          <div class="detail-primary-card">
+            <div class="detail-title-row">
+              <button type="button" id="detail-title-check" class="task-check" title="Complete task"></button>
+              <textarea id="detail-title" class="detail-title-input" placeholder="Task title" rows="1" maxlength="500"></textarea>
+            </div>
+            <div id="detail-token-chips" class="token-preview-chips"></div>
+
+            <!-- Mobile-only meta (Todoist style) -->
+            <div class="mobile-only-meta">
+              <div class="mobile-meta-row" id="mobile-project-row">
+                <span class="mobile-meta-icon" id="mobile-project-icon"></span>
+                <span class="mobile-meta-label" id="mobile-project-label">Inbox</span>
+                <select id="mobile-project-select" class="mobile-native-select-overlay"></select>
+              </div>
+
+              <div class="mobile-meta-row" id="mobile-date-row">
+                <span class="mobile-meta-icon" id="mobile-date-icon"></span>
+                <span class="mobile-meta-label" id="mobile-date-label">Date</span>
+              </div>
+
+              <div class="mobile-meta-pri-loc-row">
+                <button type="button" class="mobile-chip-btn" id="mobile-chip-priority">
+                  <span class="mobile-chip-icon" id="mobile-chip-priority-icon"></span>
+                  <span id="mobile-chip-priority-label">P3</span>
+                </button>
+                <input type="text" id="mobile-location-input" class="attr-input" placeholder="Location..." autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- Description Container -->
+            <div id="detail-desc-container" class="detail-desc-container">
+              <textarea id="detail-desc" class="detail-desc-input" placeholder="Description..."></textarea>
+            </div>
+          </div>
+
+          <!-- Subtasks Container Card -->
+          <div class="detail-subtasks-container">
+            <div class="detail-subtasks-header">
+              <div class="detail-subtasks-title">
+                <span class="subtasks-heading">Subtasks</span>
+                <span id="detail-subtasks-count" class="subtasks-count">0/0</span>
+              </div>
+              <span id="detail-subtasks-chevron" class="subtasks-chevron">▾</span>
+            </div>
+            <div class="detail-subtasks-card-body">
+              <div id="detail-subtasks-list" class="task-list"></div>
+              <div id="detail-add-subtask-box"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-sidebar">
+          <div class="attr-group">
+            <label class="attr-label">Project</label>
+            <select id="detail-project-select" class="attr-select mobile-native-select"></select>
+            <div class="composer-chip-wrapper pc-custom-select-wrapper" style="width: 100%;">
+              <button type="button" id="detail-project-custom-trigger" class="attr-input pc-custom-select-trigger" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; padding: 6px 10px; width: 100%;">
+                <span id="detail-project-custom-label"># Inbox</span>
+                <span style="font-size: 0.72rem; color: var(--rp-muted);">▾</span>
+              </button>
+              <div id="detail-project-custom-popover" class="composer-popover" style="display:none; width: 100%; max-height: 220px; overflow-y: auto; z-index: 1100;"></div>
+            </div>
+          </div>
+
+          <div class="attr-group">
+            <label class="attr-label">Section</label>
+            <select id="detail-section-select" class="attr-select mobile-native-select"></select>
+            <div class="composer-chip-wrapper pc-custom-select-wrapper" style="width: 100%;">
+              <button type="button" id="detail-section-custom-trigger" class="attr-input pc-custom-select-trigger" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; padding: 6px 10px; width: 100%;">
+                <span id="detail-section-custom-label">(No section)</span>
+                <span style="font-size: 0.72rem; color: var(--rp-muted);">▾</span>
+              </button>
+              <div id="detail-section-custom-popover" class="composer-popover" style="display:none; width: 100%; max-height: 220px; overflow-y: auto; z-index: 1100;"></div>
+            </div>
+          </div>
+
+          <div class="attr-group">
+            <label class="attr-label">Schedule & Recurrence</label>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div class="composer-chip-wrapper" style="width: 100%;">
+                <button type="button" id="detail-due-date-trigger" class="attr-input" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; padding: 6px 10px;">
+                  <span style="display: flex; align-items: center; gap: 8px;">
+                    <span id="detail-due-date-icon" style="display:flex; align-items:center;"></span>
+                    <span id="detail-due-date-label">No date</span>
+                  </span>
+                  <span style="font-size: 0.72rem; color: var(--rp-muted);">▾</span>
+                </button>
+                <input type="date" id="detail-due-date" style="display:none;" />
+                <div id="detail-due-date-popover" class="composer-popover" style="display:none;">
+                  <div class="cal-quick-input-wrap">
+                    <input type="text" id="cal-quick-input" class="attr-input" placeholder="Type a date" autocomplete="off" />
+                  </div>
+                  <div class="cal-quick-choices">
+                    <div class="popover-item cal-choice-item" data-action="today">
+                      <span class="cal-choice-icon" id="pop-icon-today"></span>
+                      <span class="cal-choice-label">Today</span>
+                      <span class="cal-choice-badge" id="cal-badge-today"></span>
+                    </div>
+                    <div class="popover-item cal-choice-item" data-action="tomorrow">
+                      <span class="cal-choice-icon" id="pop-icon-tomorrow"></span>
+                      <span class="cal-choice-label">Tomorrow</span>
+                      <span class="cal-choice-badge" id="cal-badge-tomorrow"></span>
+                    </div>
+                    <div class="popover-item cal-choice-item" data-action="weekend">
+                      <span class="cal-choice-icon" id="pop-icon-weekend"></span>
+                      <span class="cal-choice-label">This weekend</span>
+                      <span class="cal-choice-badge" id="cal-badge-weekend"></span>
+                    </div>
+                    <div class="popover-item cal-choice-item" data-action="next-week">
+                      <span class="cal-choice-icon" id="pop-icon-nextweek"></span>
+                      <span class="cal-choice-label">Next week</span>
+                      <span class="cal-choice-badge" id="cal-badge-nextweek"></span>
+                    </div>
+                  </div>
+                  <div class="cal-divider"></div>
+                  <div id="detail-custom-cal-wrap">
+                    <div id="detail-pc-calendar"></div>
+                  </div>
+                  <div class="cal-divider"></div>
+                  <div class="popover-item cal-choice-item cal-nodate-item" data-action="clear">
+                    <span class="cal-choice-icon" id="pop-icon-nodate">✕</span>
+                    <span class="cal-choice-label">No date</span>
+                  </div>
+                </div>
+              </div>
+              <select id="detail-recurrence-select" class="attr-select mobile-native-select">
+                <option value="">No recurrence</option>
+                <option value="daily">Daily (Every day)</option>
+                <option value="weekdays">Weekdays (Mon - Fri)</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+                <option value="custom">Custom Cron Expression</option>
+              </select>
+              <div class="composer-chip-wrapper pc-custom-select-wrapper" style="width: 100%;">
+                <button type="button" id="detail-recurrence-custom-trigger" class="attr-input pc-custom-select-trigger" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; padding: 6px 10px; width: 100%;">
+                  <span id="detail-recurrence-custom-label">No recurrence</span>
+                  <span style="font-size: 0.72rem; color: var(--rp-muted);">▾</span>
+                </button>
+                <div id="detail-recurrence-custom-popover" class="composer-popover" style="display:none; width: 100%; z-index: 1100;">
+                  <div class="popover-item recurrence-opt" data-value="">No recurrence</div>
+                  <div class="popover-item recurrence-opt" data-value="daily">Daily (Every day)</div>
+                  <div class="popover-item recurrence-opt" data-value="weekdays">Weekdays (Mon - Fri)</div>
+                  <div class="popover-item recurrence-opt" data-value="weekly">Weekly</div>
+                  <div class="popover-item recurrence-opt" data-value="monthly">Monthly</div>
+                  <div class="popover-item recurrence-opt" data-value="yearly">Yearly</div>
+                  <div class="popover-item recurrence-opt" data-value="custom">Custom Cron Expression</div>
+                </div>
+              </div>
+              <div id="detail-cron-box" style="display:none; flex-direction:column; gap:4px;">
+                <input type="text" id="detail-cron-input" class="attr-input" placeholder="e.g. 0 9 * * 1 (Mon 9am)" autocomplete="off" />
+              </div>
+            </div>
+          </div>
+
+          <div class="attr-group">
+            <label class="attr-label">Priority</label>
+            <select id="detail-priority-select" class="attr-select mobile-native-select">
+              <option value="1">P1</option>
+              <option value="2">P2</option>
+              <option value="3">P3</option>
+            </select>
+            <div class="composer-chip-wrapper pc-custom-select-wrapper" style="width: 100%;">
+              <button type="button" id="detail-priority-custom-trigger" class="attr-input pc-custom-select-trigger" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; padding: 6px 10px; width: 100%;">
+                <span id="detail-priority-custom-label" style="display:flex; align-items:center; gap:6px;">
+                  <span class="priority-dot" style="width:8px; height:8px; border-radius:50%; background:var(--rp-foam);"></span>
+                  <span>P3</span>
+                </span>
+                <span style="font-size: 0.72rem; color: var(--rp-muted);">▾</span>
+              </button>
+              <div id="detail-priority-custom-popover" class="composer-popover" style="display:none; width: 100%; z-index: 1100;">
+                <div class="popover-item priority-opt" data-value="1" style="display:flex; align-items:center; gap:8px; color:var(--rp-love);">
+                  <span style="width:8px; height:8px; border-radius:50%; background:var(--rp-love);"></span>
+                  <span>P1</span>
+                </div>
+                <div class="popover-item priority-opt" data-value="2" style="display:flex; align-items:center; gap:8px; color:var(--rp-gold);">
+                  <span style="width:8px; height:8px; border-radius:50%; background:var(--rp-gold);"></span>
+                  <span>P2</span>
+                </div>
+                <div class="popover-item priority-opt" data-value="3" style="display:flex; align-items:center; gap:8px; color:var(--rp-foam);">
+                  <span style="width:8px; height:8px; border-radius:50%; background:var(--rp-foam);"></span>
+                  <span>P3</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="attr-group">
+            <label class="attr-label">Location</label>
+            <input type="text" id="detail-location-input" class="attr-input" placeholder="Location or address..." />
+            <a id="detail-location-maps-link" href="#" target="_blank" rel="noopener noreferrer" class="meta-badge location" style="margin-top:4px; display:none;">
+              Open in Maps
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Project Creation Modal
+       ---------------------------------------------------------------------- -->
+  <div id="modal-project" class="modal-overlay">
+    <div class="detail-modal" style="max-width:440px;">
+      <div class="detail-header">
+        <h3 id="modal-project-title" style="font-size:1.05rem; font-weight:700;">Add Project</h3>
+        <button id="modal-project-close" class="btn-icon-subtle"></button>
+      </div>
+      <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+        <div class="attr-group">
+          <label class="attr-label">Project Name</label>
+          <input type="text" id="modal-project-name" class="attr-input" placeholder="e.g. Work, Personal, Finances..." />
+        </div>
+        <div class="attr-group">
+          <label class="attr-label">Parent Folder (optional)</label>
+          <select id="modal-project-parent" class="attr-select">
+            <option value="">(Root)</option>
+          </select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="modal-project-cancel" class="btn-secondary">Cancel</button>
+          <button id="modal-project-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Global Search Modal (Ripgrep / Command Palette)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-search" class="modal-overlay">
+    <div class="search-modal">
+      <div class="search-input-header">
+        <span id="search-icon"></span>
+        <input type="text" id="global-search-input" placeholder="Search tasks or projects... (Esc to exit)" autocomplete="off" />
+      </div>
+      <div id="global-search-results" class="search-results-list">
+        <!-- Results injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Move Task to Project Modal (Triggered via Space)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-move-task" class="modal-overlay">
+    <div class="search-modal" style="max-width:450px;">
+      <div class="search-input-header">
+        <span id="move-task-icon"></span>
+        <input type="text" id="move-task-input" placeholder="Move to project... (Type to filter)" autocomplete="off" />
+      </div>
+      <div id="move-task-results" class="search-results-list">
+        <!-- Projects list -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Move Task to Section Modal (Triggered via 's')
+       ---------------------------------------------------------------------- -->
+  <div id="modal-move-task-sec" class="modal-overlay">
+    <div class="search-modal" style="max-width:450px;">
+      <div class="search-input-header">
+        <span id="move-task-sec-icon"></span>
+        <input type="text" id="move-task-sec-input" placeholder="Move to section... (Type to filter)" autocomplete="off" />
+      </div>
+      <div id="move-task-sec-results" class="search-results-list">
+        <!-- Sections list -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Add Section Modal (Mobile Bottom Sheet / Dedicated Modal)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-add-section" class="modal-overlay">
+    <div class="detail-modal" style="max-width:420px;">
+      <div class="detail-header" style="padding: 14px 18px;">
+        <h3 class="detail-modal-title" style="font-weight: 600; font-size: 1rem; margin: 0;">Add Section</h3>
+        <button type="button" class="btn-icon-subtle modal-close" id="modal-add-section-close">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="text" id="modal-add-section-input" class="attr-input" placeholder="Section name (e.g. In progress, Ideas...)" autocomplete="off" />
+      </div>
+      <div class="modal-footer" style="padding: 12px 18px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--rp-border);">
+        <button type="button" class="btn-secondary" id="modal-add-section-cancel">Cancel</button>
+        <button type="button" class="btn-primary" id="modal-add-section-save">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Move Section to Project Modal
+       ---------------------------------------------------------------------- -->
+  <div id="modal-move-section" class="modal-overlay">
+    <div class="detail-modal" style="max-width:420px;">
+      <div class="detail-header">
+        <h3 style="font-size:1.05rem; font-weight:700;">Move Section</h3>
+        <button id="modal-move-sec-close" class="btn-icon-subtle"></button>
+      </div>
+      <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+        <div class="attr-group">
+          <label class="attr-label">Destination Project</label>
+          <select id="move-section-project-select" class="attr-select"></select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="modal-move-sec-cancel" class="btn-secondary">Cancel</button>
+          <button id="modal-move-sec-save" class="btn-primary">Move with tasks</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Custom Confirm Modal (Zero ugly browser alerts)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-confirm" class="modal-overlay">
+    <div class="detail-modal" style="max-width:400px;">
+      <div class="detail-header">
+        <h3 id="confirm-title" style="font-size:1.05rem; font-weight:700; color:var(--rp-love);">Confirm</h3>
+      </div>
+      <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+        <p id="confirm-message" style="color:var(--rp-subtle); font-size:0.9rem;">Are you sure?</p>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px;">
+          <button id="confirm-btn-cancel" class="btn-secondary">Cancel</button>
+          <button id="confirm-btn-ok" class="btn-primary" style="background-color:var(--rp-love);">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Quick Add Modal (Triggered via 'q' from any project/view)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-quick-add" class="modal-overlay">
+    <div id="modal-quick-add-container" style="width: 100%; max-width: 580px; padding: 0 16px;">
+      <!-- Exact same composer dynamically rendered in foreground -->
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Sheet Backdrop -->
+  <div id="mobile-sheet-backdrop" class="mobile-sheet-backdrop" style="display:none;"></div>
+
+  <!-- Mobile Date Selection Sheet -->
+  <div id="mobile-due-date-popover" class="composer-popover mobile-only-sheet" style="display:none;">
+    <div class="detail-drag-handle" style="margin: 0 auto 10px auto;"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding:0 4px;">
+      <h4 style="margin:0; font-size:1.05rem; font-weight:700; color:var(--rp-text);">Date &amp; Repeat</h4>
+      <button type="button" id="mobile-date-close-btn" class="btn-icon-subtle" style="width:28px; height:28px; border-radius:50%; font-size:1.1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; border:none; color:var(--rp-subtle);">&times;</button>
+    </div>
+    <div class="popover-item" data-action="today" style="display:flex; align-items:center; gap:8px;">
+      <span id="mobile-pop-icon-today" style="display:flex; align-items:center;"></span> <span>Today</span>
+    </div>
+    <div class="popover-item" data-action="tomorrow" style="display:flex; align-items:center; gap:8px;">
+      <span id="mobile-pop-icon-tomorrow" style="display:flex; align-items:center;"></span> <span>Tomorrow</span>
+    </div>
+    <div class="popover-item" data-action="next-week" style="display:flex; align-items:center; gap:8px;">
+      <span id="mobile-pop-icon-nextweek" style="display:flex; align-items:center;"></span> <span>Next week</span>
+    </div>
+    <div style="border-top: 1px solid var(--rp-border); margin: 8px 0;"></div>
+    <div class="mobile-date-custom-container" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px 0; width:100%; box-sizing:border-box;">
+      <label style="font-size:0.85rem; font-weight:600; color:var(--rp-subtle); display:block; margin-bottom:6px; text-align:center;">Custom date:</label>
+      <div style="display:flex; justify-content:center; width:100%;">
+        <input type="date" id="mobile-due-date-picker" class="attr-input" />
+      </div>
+    </div>
+    <div style="border-top: 1px solid var(--rp-border); margin: 8px 0;"></div>
+    <div class="mobile-recurrence-section" style="padding: 6px 0;">
+      <label style="font-size: 0.85rem; font-weight:600; color: var(--rp-subtle); display: block; margin-bottom: 6px;">Repeat (Recurrence):</label>
+      <div class="mobile-recurrence-wrapper" style="position: relative;">
+        <select id="mobile-recurrence-select" class="attr-select" style="width: 100%; font-size: 0.92rem; padding: 10px 14px; border-radius: 12px; background-color: var(--rp-overlay); color: var(--rp-text); border: 1px solid var(--rp-border);">
+          <option value="">Do not repeat</option>
+          <option value="daily">Every day</option>
+          <option value="weekdays">Every weekday</option>
+          <option value="weekly">Every week</option>
+          <option value="monthly">Every month</option>
+          <option value="yearly">Every year</option>
+          <option value="custom">Custom cron</option>
+        </select>
+      </div>
+      <div id="mobile-cron-box" style="display: none; flex-direction: column; gap: 4px; margin-top: 8px;">
+        <input type="text" id="mobile-cron-input" class="attr-input" placeholder="e.g. 0 9 * * 1 (Mon 9am)" style="width: 100%; font-size: 0.88rem; padding: 8px 12px; border-radius: 10px;" />
+        <div style="font-size: 0.73rem; color: var(--rp-subtle);">Format: min hour dom month dow</div>
+      </div>
+    </div>
+    <div style="border-top: 1px solid var(--rp-border); margin: 8px 0;"></div>
+    <div class="popover-item" data-action="clear" style="display:flex; align-items:center; gap:8px; color:var(--rp-love);">
+      <span id="mobile-pop-icon-nodate" style="display:flex; align-items:center;"></span> <span>No date</span>
+    </div>
+    <button type="button" id="mobile-date-done-btn" class="btn-primary" style="width:100%; padding:11px 16px; font-size:0.95rem; font-weight:600; border-radius:12px; margin-top:10px; cursor:pointer; text-align:center;">Done</button>
+  </div>
+
+  <!-- Mobile Priority Selection Sheet -->
+  <div id="sheet-priority" class="composer-popover mobile-only-sheet" style="display:none;">
+    <div class="detail-drag-handle" style="margin: 0 auto 10px auto;"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding:0 4px;">
+      <h4 style="margin:0; font-size:1.05rem; font-weight:700; color:var(--rp-text);">Select Priority</h4>
+      <button type="button" id="sheet-priority-close-btn" class="btn-icon-subtle" style="width:28px; height:28px; border-radius:50%; font-size:1.1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; border:none; color:var(--rp-subtle);">&times;</button>
+    </div>
+    <div class="popover-item sheet-priority-item" data-priority="1" style="display:flex; align-items:center; gap:8px; color:var(--rp-love); font-weight:600; margin-bottom:6px; background-color:var(--rp-overlay); border-radius:10px; padding:12px 14px; cursor:pointer;">
+      <span class="sheet-priority-icon" id="sheet-pri-icon-1" style="display:flex;"></span>
+      <span>Priority 1 (Urgent)</span>
+    </div>
+    <div class="popover-item sheet-priority-item" data-priority="2" style="display:flex; align-items:center; gap:8px; color:var(--rp-gold); font-weight:600; margin-bottom:6px; background-color:var(--rp-overlay); border-radius:10px; padding:12px 14px; cursor:pointer;">
+      <span class="sheet-priority-icon" id="sheet-pri-icon-2" style="display:flex;"></span>
+      <span>Priority 2 (High)</span>
+    </div>
+    <div class="popover-item sheet-priority-item" data-priority="3" style="display:flex; align-items:center; gap:8px; color:var(--rp-foam); font-weight:600; margin-bottom:6px; background-color:var(--rp-overlay); border-radius:10px; padding:12px 14px; cursor:pointer;">
+      <span class="sheet-priority-icon" id="sheet-pri-icon-3" style="display:flex;"></span>
+      <span>Priority 3 (Normal)</span>
+    </div>
+  </div>
+
+  <!-- Mobile Location Selection Sheet -->
+  <div id="sheet-location" class="composer-popover mobile-only-sheet" style="display:none;">
+    <div class="detail-drag-handle" style="margin: 0 auto 10px auto;"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding:0 4px;">
+      <h4 style="margin:0; font-size:1.05rem; font-weight:700; color:var(--rp-text);">Set Location</h4>
+      <button type="button" id="sheet-location-close-btn" class="btn-icon-subtle" style="width:28px; height:28px; border-radius:50%; font-size:1.1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; border:none; color:var(--rp-subtle);">&times;</button>
+    </div>
+    <div style="margin-bottom:12px;">
+      <input type="text" id="sheet-location-input" class="attr-input" placeholder="Location or address..." style="width:100%; font-size:0.92rem; padding:10px 14px; border-radius:12px;" autocomplete="off" />
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" id="sheet-location-clear" class="btn-secondary" style="font-size:0.9rem; padding:10px 16px; border-radius:10px; cursor:pointer;">Clear</button>
+      <button type="button" id="sheet-location-save" class="btn-primary" style="font-size:0.9rem; padding:10px 18px; border-radius:10px; cursor:pointer;">Save</button>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Custom Prompt / Input Modal (Zero ugly browser prompts)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-prompt" class="modal-overlay">
+    <div class="detail-modal" style="max-width:420px;">
+      <div class="detail-header">
+        <h3 id="prompt-title" style="font-size:1.05rem; font-weight:700;">Input</h3>
+        <button id="modal-prompt-close" class="btn-icon-subtle"></button>
+      </div>
+      <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+        <input type="text" id="prompt-input" class="attr-input" autocomplete="off" />
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px;">
+          <button id="prompt-btn-cancel" class="btn-secondary">Cancel</button>
+          <button id="prompt-btn-ok" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Keyboard Help Modal
+       ---------------------------------------------------------------------- -->
+  <div id="modal-help" class="modal-overlay">
+    <div class="detail-modal" style="max-width:620px;">
+      <div class="detail-header">
+        <h3 style="font-size:1.05rem; font-weight:700;">Keyboard Shortcuts (Vim & Todoist)</h3>
+        <button id="modal-help-close" class="btn-icon-subtle"></button>
+      </div>
+      <div style="padding:20px; display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div>
+          <div class="attr-label" style="margin-bottom:8px;">Navigation & Focus</div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:0.85rem;">
+            <div style="display:flex; justify-content:space-between;"><span>Move up / down</span><span><kbd>j</kbd> / <kbd>k</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Move project / task</span><span><kbd>Shift+J</kbd> / <kbd>Shift+K</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Indent / Outdent</span><span><kbd>Shift+L</kbd> / <kbd>Shift+H</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Sidebar focus</span><span><kbd>h</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Tasks focus (1st task)</span><span><kbd>l</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Top / Bottom of list</span><span><kbd>gg</kbd> / <kbd>G</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Global search</span><span><kbd>/</kbd></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="attr-label" style="margin-bottom:8px;">Task Actions</div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:0.85rem;">
+            <div style="display:flex; justify-content:space-between;"><span>Select task (Yazi style)</span><span><kbd>Space</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Move to project</span><span><kbd>m</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Add task below</span><span><kbd>a</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Quick add (Inbox)</span><span><kbd>q</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Task priority (P1 / P2 / P3)</span><span><kbd>&</kbd> / <kbd>é</kbd> / <kbd>"</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Edit task details</span><span><kbd>Enter</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Complete / Delete</span><span><kbd>d</kbd></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Undo deletion</span><span><kbd>u</kbd></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Master Password Setup Modal (First connection)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-auth-setup" class="modal-overlay auth-overlay">
+    <div class="detail-modal auth-modal" style="max-width:420px;">
+      <div class="detail-header">
+        <h3 style="font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span id="setup-lock-icon"></span> Welcome to Get Done
+        </h3>
+      </div>
+      <form id="form-auth-setup" style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+        <p style="font-size:0.85rem; color:var(--rp-subtle); line-height:1.45; margin:0;">
+          Create a master password to protect your instance on this server. You can change it anytime inside the app.
+        </p>
+        <div id="auth-setup-error" class="auth-error-msg" style="display:none;"></div>
+        <div class="attr-group">
+          <label class="attr-label">Master Password</label>
+          <input type="password" id="auth-setup-password" class="attr-input" placeholder="Enter master password (min 4 chars)" required autocomplete="new-password" />
+        </div>
+        <div class="attr-group">
+          <label class="attr-label">Confirm Password</label>
+          <input type="password" id="auth-setup-confirm" class="attr-input" placeholder="Repeat master password" required autocomplete="new-password" />
+        </div>
+        <button type="submit" id="btn-setup-submit" class="btn-primary" style="margin-top:6px; width:100%; justify-content:center;">
+          Set Password & Continue
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Unlock / Login Modal (Locked session)
+       ---------------------------------------------------------------------- -->
+  <div id="modal-auth-login" class="modal-overlay auth-overlay">
+    <div class="detail-modal auth-modal" style="max-width:380px;">
+      <div class="detail-header">
+        <h3 style="font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span id="login-lock-icon"></span> Get Done is Locked
+        </h3>
+      </div>
+      <form id="form-auth-login" style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+        <p style="font-size:0.85rem; color:var(--rp-subtle); line-height:1.4; margin:0;">
+          Enter your master password to unlock your workspace.
+        </p>
+        <div id="auth-login-error" class="auth-error-msg" style="display:none;"></div>
+        <div class="attr-group">
+          <label class="attr-label">Password</label>
+          <input type="password" id="auth-login-password" class="attr-input" placeholder="Enter master password" required autocomplete="current-password" autofocus />
+        </div>
+        <button type="submit" id="btn-login-submit" class="btn-primary" style="margin-top:6px; width:100%; justify-content:center;">
+          Unlock
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------------------------------
+       Change Password Modal
+       ---------------------------------------------------------------------- -->
+  <div id="modal-change-password" class="modal-overlay">
+    <div class="detail-modal auth-modal" style="max-width:420px;">
+      <div class="detail-header">
+        <h3 style="font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span id="change-pwd-lock-icon"></span> Change Password
+        </h3>
+        <button id="modal-change-pwd-close" type="button" class="btn-icon-subtle"></button>
+      </div>
+      <form id="form-change-password" style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+        <div id="change-pwd-error" class="auth-error-msg" style="display:none;"></div>
+        <div class="attr-group">
+          <label class="attr-label">Current Password</label>
+          <input type="password" id="change-pwd-current" class="attr-input" placeholder="Current master password" required autocomplete="current-password" />
+        </div>
+        <div class="attr-group">
+          <label class="attr-label">New Password</label>
+          <input type="password" id="change-pwd-new" class="attr-input" placeholder="New master password (min 4 chars)" required autocomplete="new-password" />
+        </div>
+        <div class="attr-group">
+          <label class="attr-label">Confirm New Password</label>
+          <input type="password" id="change-pwd-confirm" class="attr-input" placeholder="Confirm new master password" required autocomplete="new-password" />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button type="button" id="modal-change-pwd-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" id="btn-change-pwd-save" class="btn-primary">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

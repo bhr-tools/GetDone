@@ -1,0 +1,23 @@
+{
+  "name": "Get Done",
+  "short_name": "Get Done",
+  "description": "Minimalist todo list with Vim navigation & Rosé Pine design",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#191724",
+  "theme_color": "#191724",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

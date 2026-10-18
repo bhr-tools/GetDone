@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -942,6 +943,92 @@ func (s *Store) RestoreTasks(tasks []*Task, updates []RestoreUpdate) error {
 	})
 }
 
+func shiftDueDate(dueStr string, days int) (string, error) {
+	parts := strings.SplitN(strings.TrimSpace(dueStr), " ", 2)
+	datePart := parts[0]
+	t, err := time.Parse("2006-01-02", datePart)
+	if err != nil {
+		return "", err
+	}
+	shifted := t.AddDate(0, 0, days)
+	res := shifted.Format("2006-01-02")
+	if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
+		res += " " + strings.TrimSpace(parts[1])
+	}
+	return res, nil
+}
+
+func shiftDescendantsDueDateTx(tx *sql.Tx, parentID string, days int, now time.Time) error {
+	rows, err := tx.Query(`
+		WITH RECURSIVE descendants(id, due_date) AS (
+			SELECT id, due_date FROM tasks WHERE parent_id = ?
+			UNION ALL
+			SELECT t.id, t.due_date FROM tasks t JOIN descendants d ON t.parent_id = d.id
+		)
+		SELECT id, due_date FROM descendants WHERE due_date IS NOT NULL AND due_date != ''
+	`, parentID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type item struct {
+		id      string
+		dueDate string
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.id, &it.dueDate); err != nil {
+			return err
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.Prepare(`UPDATE tasks SET due_date = ?, updated_at = ? WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, it := range items {
+		shifted, err := shiftDueDate(it.dueDate, days)
+		if err != nil {
+			continue
+		}
+		if _, err := stmt.Exec(shifted, now, it.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cascadeProjectAndSectionTx(tx *sql.Tx, parentID string, projectID string, sectionID *string, now time.Time) error {
+	var secID *string
+	if sectionID != nil && *sectionID != "" {
+		secID = sectionID
+	}
+	_, err := tx.Exec(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM tasks WHERE parent_id = ?
+			UNION ALL
+			SELECT t.id FROM tasks t JOIN descendants d ON t.parent_id = d.id
+		)
+		UPDATE tasks
+		SET project_id = ?, section_id = ?, updated_at = ?
+		WHERE id IN (SELECT id FROM descendants)
+	`, parentID, projectID, secID, now)
+	return err
+}
+
 func (s *Store) PostponeTask(id string, days int, now time.Time) error {
 	task, err := s.GetTask(id)
 	if err != nil {
@@ -965,13 +1052,25 @@ func (s *Store) PostponeTask(id string, days int, now time.Time) error {
 		targetStr += " " + parts[1]
 	}
 
-	_, err = s.db.Exec(`
-		UPDATE tasks
-		SET due_date = ?, updated_at = ?
-		WHERE id = ?
-	`, targetStr, time.Now(), id)
+	return s.RunInTx(func(tx *sql.Tx) error {
+		nowTime := time.Now()
+		_, err := tx.Exec(`
+			UPDATE tasks
+			SET due_date = ?, updated_at = ?
+			WHERE id = ?
+		`, targetStr, nowTime, id)
+		if err != nil {
+			return err
+		}
 
-	return err
+		if days != 0 {
+			if err := shiftDescendantsDueDateTx(tx, id, days, nowTime); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 type ReorderTaskItem struct {
@@ -989,6 +1088,59 @@ func (s *Store) ReorderTasks(items []ReorderTaskItem) error {
 	}
 	defer tx.Rollback()
 
+	type changedItem struct {
+		id        string
+		projectID string
+		sectionID *string
+	}
+	var changed []changedItem
+
+	for _, it := range items {
+		var currProj string
+		var currSec sql.NullString
+		err := tx.QueryRow("SELECT project_id, section_id FROM tasks WHERE id = ?", it.ID).Scan(&currProj, &currSec)
+		if err != nil {
+			continue
+		}
+
+		targetProj := currProj
+		if it.ProjectID != nil && *it.ProjectID != "" {
+			targetProj = *it.ProjectID
+		} else if it.ParentID != nil && *it.ParentID != "" {
+			var pProj string
+			if err := tx.QueryRow("SELECT project_id FROM tasks WHERE id = ?", *it.ParentID).Scan(&pProj); err == nil && pProj != "" {
+				targetProj = pProj
+			}
+		}
+
+		var targetSec *string
+		if it.SectionID != nil && *it.SectionID != "" {
+			targetSec = it.SectionID
+		}
+
+		projChanged := (currProj != targetProj)
+		secChanged := false
+		if !currSec.Valid {
+			if targetSec != nil {
+				secChanged = true
+			}
+		} else {
+			if targetSec == nil {
+				secChanged = true
+			} else if currSec.String != *targetSec {
+				secChanged = true
+			}
+		}
+
+		if projChanged || secChanged {
+			changed = append(changed, changedItem{
+				id:        it.ID,
+				projectID: targetProj,
+				sectionID: targetSec,
+			})
+		}
+	}
+
 	stmt, err := tx.Prepare(`
 		UPDATE tasks
 		SET position = ?, parent_id = ?, section_id = ?, project_id = COALESCE(?, project_id), updated_at = CURRENT_TIMESTAMP
@@ -1000,10 +1152,45 @@ func (s *Store) ReorderTasks(items []ReorderTaskItem) error {
 	defer stmt.Close()
 
 	for _, it := range items {
-		if _, err := stmt.Exec(it.Position, it.ParentID, it.SectionID, it.ProjectID, it.ID); err != nil {
+		var secID *string
+		if it.SectionID != nil && *it.SectionID != "" {
+			secID = it.SectionID
+		}
+		var projID *string
+		if it.ProjectID != nil && *it.ProjectID != "" {
+			projID = it.ProjectID
+		} else if it.ParentID != nil && *it.ParentID != "" {
+			for _, ch := range changed {
+				if ch.id == it.ID {
+					projID = &ch.projectID
+					break
+				}
+			}
+		}
+		if _, err := stmt.Exec(it.Position, it.ParentID, secID, projID, it.ID); err != nil {
 			return err
 		}
 	}
+
+	now := time.Now()
+	for _, ch := range changed {
+		var finalProj string
+		var finalSec sql.NullString
+		if err := tx.QueryRow("SELECT project_id, section_id FROM tasks WHERE id = ?", ch.id).Scan(&finalProj, &finalSec); err != nil {
+			finalProj = ch.projectID
+			if ch.sectionID != nil {
+				finalSec = sql.NullString{String: *ch.sectionID, Valid: true}
+			}
+		}
+		var finalSecPtr *string
+		if finalSec.Valid && finalSec.String != "" {
+			finalSecPtr = &finalSec.String
+		}
+		if err := cascadeProjectAndSectionTx(tx, ch.id, finalProj, finalSecPtr, now); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -1075,6 +1262,12 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		return nil, err
 	}
 
+	var oldDue *string
+	if task.DueDate != nil && strings.TrimSpace(*task.DueDate) != "" {
+		s := strings.TrimSpace(*task.DueDate)
+		oldDue = &s
+	}
+
 	if v, ok := updates["title"]; ok {
 		if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
 			task.Title = strings.TrimSpace(str)
@@ -1085,19 +1278,24 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 			task.Description = str
 		}
 	}
+	projectIdUpdated := false
 	if v, ok := updates["project_id"]; ok {
 		if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
-			task.ProjectID = str
+			task.ProjectID = strings.TrimSpace(str)
+			projectIdUpdated = true
 		}
 	}
+	sectionIdUpdated := false
 	if v, ok := updates["section_id"]; ok {
+		sectionIdUpdated = true
 		if v == nil {
 			task.SectionID = nil
 		} else if str, ok := v.(string); ok {
-			if str == "" {
+			if strings.TrimSpace(str) == "" {
 				task.SectionID = nil
 			} else {
-				task.SectionID = &str
+				trimmed := strings.TrimSpace(str)
+				task.SectionID = &trimmed
 			}
 		}
 	}
@@ -1105,26 +1303,53 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		if v == nil {
 			task.ParentID = nil
 		} else if str, ok := v.(string); ok {
-			if str == "" {
+			if strings.TrimSpace(str) == "" {
 				task.ParentID = nil
 			} else {
-				task.ParentID = &str
+				trimmed := strings.TrimSpace(str)
+				task.ParentID = &trimmed
+				if !projectIdUpdated {
+					var parentProj string
+					var parentSec sql.NullString
+					if err := s.db.QueryRow("SELECT project_id, section_id FROM tasks WHERE id = ?", trimmed).Scan(&parentProj, &parentSec); err == nil && parentProj != "" {
+						task.ProjectID = parentProj
+						projectIdUpdated = true
+						if !sectionIdUpdated {
+							sectionIdUpdated = true
+							if parentSec.Valid && parentSec.String != "" {
+								task.SectionID = &parentSec.String
+							} else {
+								task.SectionID = nil
+							}
+						}
+					}
+				}
 			}
 		}
 	}
 	if v, ok := updates["priority"]; ok {
-		if num, ok := v.(float64); ok && num >= 1 && num <= 4 {
-			task.Priority = int(num)
+		switch num := v.(type) {
+		case float64:
+			if num >= 1 && num <= 4 {
+				task.Priority = int(num)
+			}
+		case int:
+			if num >= 1 && num <= 4 {
+				task.Priority = num
+			}
 		}
 	}
+	dueDateUpdated := false
 	if v, ok := updates["due_date"]; ok {
+		dueDateUpdated = true
 		if v == nil {
 			task.DueDate = nil
 		} else if str, ok := v.(string); ok {
-			if strings.TrimSpace(str) == "" {
+			trimmed := strings.TrimSpace(str)
+			if trimmed == "" {
 				task.DueDate = nil
 			} else {
-				task.DueDate = &str
+				task.DueDate = &trimmed
 			}
 		}
 	}
@@ -1132,10 +1357,11 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		if v == nil {
 			task.Recurrence = nil
 		} else if str, ok := v.(string); ok {
-			if strings.TrimSpace(str) == "" {
+			trimmed := strings.TrimSpace(str)
+			if trimmed == "" {
 				task.Recurrence = nil
 			} else {
-				task.Recurrence = &str
+				task.Recurrence = &trimmed
 			}
 		}
 	}
@@ -1143,21 +1369,80 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		if v == nil {
 			task.Location = nil
 		} else if str, ok := v.(string); ok {
-			if strings.TrimSpace(str) == "" {
+			trimmed := strings.TrimSpace(str)
+			if trimmed == "" {
 				task.Location = nil
 			} else {
-				task.Location = &str
+				task.Location = &trimmed
 			}
 		}
 	}
 	if v, ok := updates["position"]; ok {
-		if num, ok := v.(float64); ok {
+		switch num := v.(type) {
+		case float64:
 			task.Position = int(num)
+		case int:
+			task.Position = num
 		}
 	}
 
-	if err := s.UpdateTask(task); err != nil {
+	deltaDays := 0
+	hasDelta := false
+	if dueDateUpdated && oldDue != nil && task.DueDate != nil {
+		oldDateStr := strings.Split(*oldDue, " ")[0]
+		newDateStr := strings.Split(*task.DueDate, " ")[0]
+		tOld, errOld := time.Parse("2006-01-02", oldDateStr)
+		tNew, errNew := time.Parse("2006-01-02", newDateStr)
+		if errOld == nil && errNew == nil {
+			deltaDays = int(math.Round(float64(tNew.Sub(tOld)) / float64(24*time.Hour)))
+			if deltaDays != 0 {
+				hasDelta = true
+			}
+		}
+	}
+
+	nowTime := time.Now()
+	task.UpdatedAt = nowTime
+	isCollapsed := 0
+	if task.IsCollapsed {
+		isCollapsed = 1
+	}
+
+	err = s.RunInTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE tasks
+			SET project_id = ?, section_id = ?, parent_id = ?, title = ?, description = ?,
+			    priority = ?, due_date = ?, recurrence = ?, location = ?,
+			    position = ?, is_collapsed = ?, updated_at = ?
+			WHERE id = ?
+		`, task.ProjectID, task.SectionID, task.ParentID, task.Title, task.Description,
+			task.Priority, task.DueDate, task.Recurrence, task.Location,
+			task.Position, isCollapsed, task.UpdatedAt, task.ID)
+		if err != nil {
+			return err
+		}
+
+		if projectIdUpdated || sectionIdUpdated {
+			if err := cascadeProjectAndSectionTx(tx, task.ID, task.ProjectID, task.SectionID, nowTime); err != nil {
+				return err
+			}
+		}
+
+		if hasDelta {
+			if err := shiftDescendantsDueDateTx(tx, task.ID, deltaDays, nowTime); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
 		return nil, err
+	}
+
+	refreshed, err := s.GetTask(id)
+	if err == nil {
+		return refreshed, nil
 	}
 	return task, nil
 }

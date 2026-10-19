@@ -2421,7 +2421,9 @@ kbd {
   /* Centered mobile custom date */
   #mobile-due-date-picker {
     display: block !important;
-    width: 100% !important;
+    width: 170px !important;
+    min-width: 170px !important;
+    max-width: 170px !important;
     height: 44px !important;
     padding: 8px 12px !important;
     font-size: 1rem !important;

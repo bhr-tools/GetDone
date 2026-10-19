@@ -795,9 +795,8 @@ class GetDoneApp {
           const mobDatePicker = document.getElementById('mobile-due-date-picker');
           if (detailDateHidden) detailDateHidden.value = val;
           if (detailDatePicker) detailDatePicker.value = val;
-          if (mobDatePicker) {
+          if (mobDatePicker && mobDatePicker.value !== val) {
             mobDatePicker.value = val;
-            mobDatePicker.blur();
           }
           this.syncDetailDateLabel(val);
           this.updateSchedulePreview();
@@ -867,7 +866,6 @@ class GetDoneApp {
         const val = e.target.value;
         if (this.activeDateSheetCallback) {
           const cb = this.activeDateSheetCallback;
-          this.closeMobileDateSheet();
           await cb(val);
           return;
         }
@@ -880,7 +878,9 @@ class GetDoneApp {
         await this.saveActiveDetailTask();
       };
       mobDatePicker?.addEventListener('change', onMobDateChange);
-      mobDatePicker?.addEventListener('input', onMobDateChange);
+      mobDatePicker?.addEventListener('input', () => {
+        // Picker must remain open while adjusting native wheel/calendar
+      });
 
       const closeDateSheet = async (e) => {
         if (e) {
@@ -3038,8 +3038,12 @@ class GetDoneApp {
         chipDateVal.textContent = 'Due date';
         chipDateBtn.classList.remove('has-value');
       }
-      closeAllPopovers();
-      titleInput.focus();
+      const mobPop = document.getElementById('mobile-due-date-popover');
+      const isMobPopOpen = mobPop && mobPop.style.display === 'block';
+      if (!isMobPopOpen) {
+        closeAllPopovers();
+        titleInput.focus();
+      }
     };
 
     // Due date button and popover
@@ -6575,6 +6579,8 @@ class GetDoneApp {
   }
 
   closeMobileDateSheet() {
+    const picker = document.getElementById('mobile-due-date-picker');
+    if (picker) picker.blur();
     const sheet = document.getElementById('mobile-due-date-popover');
     if (sheet) sheet.style.display = 'none';
     this.hideMobileBackdrop();

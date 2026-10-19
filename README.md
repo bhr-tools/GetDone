@@ -1,6 +1,7 @@
 # Get Done
 
 A fast, self-hosted personal task manager inspired by the original spirit of Todoist, built around the principles of **slow tech** and **minimalism**:
+- **Vibe coded:** After using this kind of tools for 4+ years, I needed to create my own, that would do exactly what I wanted, extremely well, without the cost of opportunity of learning how to do everthing myself in a domain (web dev) where I don't want/need to be an expert.
 
 - **Zero bloat:** No gamification, no karma, no stress-inducing notifications, no AI, no productivity score dashboards.
     
@@ -17,7 +18,7 @@ A fast, self-hosted personal task manager inspired by the original spirit of Tod
 - **Native multi-instance NixOS support:** Single Go binary (~16 MB) with pure-Go embedded SQLite, packaged with Nix Flakes and a multi-instance NixOS module.
     
 
-## ⌨️ Vim Keyboard Shortcuts (Normal Mode)
+## Vim Keyboard Shortcuts (Normal Mode)
 
 Press `?` in the application to toggle the interactive help cheatsheet.
 
@@ -43,7 +44,7 @@ Press `?` in the application to toggle the interactive help cheatsheet.
 |`?`|Help|Open / close keyboard shortcuts modal|
 |`Esc`|Cancel|Exit insert mode (`INSERT`), close active modals|
 
-## ⚡ Quick Add Syntax
+## Quick Add Syntax
 
 In any capture field (or using `o` / `q`), type naturally:
 
@@ -67,7 +68,7 @@ Morning meditation every day
 - **Recurrence:** `every day`, `daily`, `every week`, `weekly`, `every monday`, `every month`, `weekdays`
     
 
-## 🚀 Installation & Usage
+## Installation & Usage
 
 ### 1. Standalone Linux / Non-NixOS (Go 1.22+ required)
 
@@ -112,7 +113,7 @@ If you use Nix with flakes enabled, you can run or install Get Done directly:
     ```
     
 
-## ❄️ NixOS Server Deployment (Multi-Instance)
+## NixOS Server Deployment (Multi-Instance)
 
 ### 1. How it works under the hood
 

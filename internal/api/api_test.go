@@ -106,8 +106,14 @@ func TestAPIRoutes(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&parseRes)
 	resp.Body.Close()
 
-	if parseRes["title"] != "Perform system update" {
+	if parseRes["title"] != "Perform system update #[NixOS Setup]" {
 		t.Errorf("Unexpected parsed title: %v", parseRes["title"])
+	}
+	if parseRes["project_name"] != nil {
+		t.Errorf("Expected nil project_name, got: %v", parseRes["project_name"])
+	}
+	if parseRes["project_id"] != nil {
+		t.Errorf("Expected nil project_id, got: %v", parseRes["project_id"])
 	}
 	if parseRes["priority"].(float64) != 2 {
 		t.Errorf("Unexpected priority: %v", parseRes["priority"])

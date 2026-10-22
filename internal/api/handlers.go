@@ -557,44 +557,17 @@ func (a *API) handleParseQuickAdd(w http.ResponseWriter, r *http.Request) {
 
 	parsed := parser.ParseQuickAdd(body.Text, time.Now())
 
-	var targetProjectID *string
-	if parsed.ProjectName != nil {
-		projects, err := a.store.ListProjects()
-		if err == nil {
-			targetProjectID = findProjectIDByName(projects, *parsed.ProjectName)
-		}
-	}
-
 	response := map[string]interface{}{
 		"title":        parsed.Title,
 		"priority":     parsed.Priority,
 		"due_date":     parsed.DueDate,
 		"recurrence":   parsed.Recurrence,
 		"location":     parsed.Location,
-		"project_name": parsed.ProjectName,
-		"project_id":   targetProjectID,
+		"project_name": nil,
+		"project_id":   nil,
 	}
 
 	writeJSON(w, http.StatusOK, response)
-}
-
-func findProjectIDByName(projects []*db.Project, name string) *string {
-	lower := strings.ToLower(name)
-	if lower == "inbox" || lower == "boîte de réception" {
-		inbox := "inbox"
-		return &inbox
-	}
-	for _, p := range projects {
-		if strings.ToLower(p.Name) == lower {
-			return &p.ID
-		}
-		if len(p.Children) > 0 {
-			if id := findProjectIDByName(p.Children, name); id != nil {
-				return id
-			}
-		}
-	}
-	return nil
 }
 
 func (a *API) handleSearch(w http.ResponseWriter, r *http.Request) {

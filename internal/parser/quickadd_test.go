@@ -13,24 +13,21 @@ func TestParseQuickAdd(t *testing.T) {
 		input        string
 		wantTitle    string
 		wantPriority int
-		wantProject  string
 		wantDueDate  string
 		wantRecurr   string
 		wantLocation string
 	}{
 		{
-			name:         "Basic task with priority and project",
+			name:         "Basic task with priority and #Tag",
 			input:        "Acheter du pain #Courses p1",
-			wantTitle:    "Acheter du pain",
+			wantTitle:    "Acheter du pain #Courses",
 			wantPriority: 1,
-			wantProject:  "Courses",
 		},
 		{
-			name:         "Task with tomorrow date and time",
+			name:         "Task with tomorrow date and time and #Tag",
 			input:        "Rendez-vous dentiste demain 14h30 #Perso p2",
-			wantTitle:    "Rendez-vous dentiste",
+			wantTitle:    "Rendez-vous dentiste #Perso",
 			wantPriority: 2,
-			wantProject:  "Perso",
 			wantDueDate:  "2026-10-08 14:30",
 		},
 		{
@@ -152,8 +149,8 @@ func TestParseQuickAdd(t *testing.T) {
 			if got.Priority != tt.wantPriority {
 				t.Errorf("Priority = %d, want %d", got.Priority, tt.wantPriority)
 			}
-			if tt.wantProject != "" && (got.ProjectName == nil || *got.ProjectName != tt.wantProject) {
-				t.Errorf("ProjectName = %v, want %q", got.ProjectName, tt.wantProject)
+			if got.ProjectName != nil {
+				t.Errorf("ProjectName = %v, want nil", got.ProjectName)
 			}
 			if tt.wantDueDate != "" && (got.DueDate == nil || *got.DueDate != tt.wantDueDate) {
 				t.Errorf("DueDate = %v, want %q", got.DueDate, tt.wantDueDate)

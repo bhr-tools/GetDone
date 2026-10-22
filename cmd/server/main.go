@@ -48,17 +48,7 @@ func main() {
 		dbPath = envDB
 	}
 	if dbPath == "" {
-		dbPath = filepath.Join(dataDir, "get-done.db")
-		// Migrate from legacy database names if found
-		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-			prevPath := filepath.Join(dataDir, "get-it-done.db")
-			legacyPath := filepath.Join(dataDir, "pine_todo.db")
-			if _, err := os.Stat(prevPath); err == nil {
-				_ = os.Rename(prevPath, dbPath)
-			} else if _, err := os.Stat(legacyPath); err == nil {
-				_ = os.Rename(legacyPath, dbPath)
-			}
-		}
+		dbPath = filepath.Join(dataDir, "getdone.db")
 	}
 
 	noAuth := *noAuthFlag

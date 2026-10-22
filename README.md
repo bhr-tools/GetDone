@@ -122,9 +122,9 @@ If you use Nix with flakes enabled, you can run or install Get Done directly:
     
     - Dedicated system user and group (`get-done`).
         
-    - Dedicated `systemd` service unit per instance (`get-done` for default instance, or `get-done-<name>`).
+    - Dedicated `systemd` service unit per instance (`getdone` for default instance, or `getdone-<name>`).
         
-    - Dedicated persistent data directory (`/var/lib/get-done` or `/var/lib/get-done-<name>`) with `StateDirectory` security.
+    - Dedicated persistent data directory (`/var/lib/getdone` or `/var/lib/getdone-<name>`) with `StateDirectory` security.
         
 
 ### 2. NixOS Configuration Example
@@ -176,4 +176,4 @@ Then in your `configuration.nix` (or `services/utilities.nix`):
 
 ### 3. Backups
 
-All project, section, task, and recurrence data is stored in a single SQLite database: `/var/lib/get-done/get-done.db` (or `/var/lib/get-done-<name>/get-done.db`). Backing up is as simple as copying this single file.
+All project, section, task, and recurrence data is stored in a single SQLite database: `/var/lib/getdone/getdone.db` (or `/var/lib/getdone-<name>/getdone.db`). Backing up is as simple as copying this single file.

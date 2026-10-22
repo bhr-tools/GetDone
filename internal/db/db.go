@@ -106,6 +106,7 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 	CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 	CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+	CREATE INDEX IF NOT EXISTS idx_tasks_section ON tasks(section_id);
 
 	CREATE TABLE IF NOT EXISTS auth_settings (
 		key TEXT PRIMARY KEY,
@@ -122,69 +123,9 @@ func (s *Store) migrate() error {
 		return err
 	}
 
-	// Check if sort_by and sort_order columns exist on projects table
-	pRows, err := s.db.Query("PRAGMA table_info(projects)")
-	if err == nil {
-		hasSortBy := false
-		hasSortOrder := false
-		for pRows.Next() {
-			var cid int
-			var name, ctype string
-			var notnull, pk int
-			var dfltValue sql.NullString
-			if err := pRows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
-				if name == "sort_by" {
-					hasSortBy = true
-				}
-				if name == "sort_order" {
-					hasSortOrder = true
-				}
-			}
-		}
-		pRows.Close()
-		if !hasSortBy {
-			if _, err := s.db.Exec("ALTER TABLE projects ADD COLUMN sort_by TEXT NOT NULL DEFAULT 'manual'"); err != nil {
-				return err
-			}
-		}
-		if !hasSortOrder {
-			if _, err := s.db.Exec("ALTER TABLE projects ADD COLUMN sort_order TEXT NOT NULL DEFAULT 'asc'"); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Check if section_id column exists on tasks table for backwards compatibility
-	rows, err := s.db.Query("PRAGMA table_info(tasks)")
-	if err == nil {
-		hasSectionID := false
-		for rows.Next() {
-			var cid int
-			var name, ctype string
-			var notnull, pk int
-			var dfltValue sql.NullString
-			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
-				if name == "section_id" {
-					hasSectionID = true
-				}
-			}
-		}
-		rows.Close()
-		if !hasSectionID {
-			if _, err := s.db.Exec("ALTER TABLE tasks ADD COLUMN section_id TEXT REFERENCES sections(id) ON DELETE CASCADE"); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Safely create index on section_id after column exists
-	if _, err := s.db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_section ON tasks(section_id)"); err != nil {
-		return err
-	}
-
 	// Ensure default 'inbox' project exists
 	var count int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE id = 'inbox'").Scan(&count)
+	err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE id = 'inbox'").Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -197,12 +138,8 @@ func (s *Store) migrate() error {
 			return err
 		}
 	} else {
-		_, _ = s.db.Exec(`UPDATE projects SET name = 'Inbox' WHERE id = 'inbox' AND name = 'Boîte de réception'`)
 		_, _ = s.db.Exec(`UPDATE projects SET sort_by = 'manual', sort_order = 'asc' WHERE id = 'inbox' AND (sort_by = '' OR sort_by IS NULL)`)
 	}
-
-	// Rescue any projects that were accidentally nested under inbox or orphaned
-	_, _ = s.db.Exec(`UPDATE projects SET parent_id = NULL WHERE parent_id = 'inbox'`)
 
 	return nil
 }
@@ -1384,6 +1321,16 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		case int:
 			task.Position = num
 		}
+	} else if projectIdUpdated || sectionIdUpdated {
+		var maxPos int
+		if task.ParentID != nil && *task.ParentID != "" {
+			_ = s.db.QueryRow("SELECT COALESCE(MAX(position), 0) FROM tasks WHERE parent_id = ? AND id != ?", *task.ParentID, task.ID).Scan(&maxPos)
+		} else if task.SectionID != nil && *task.SectionID != "" {
+			_ = s.db.QueryRow("SELECT COALESCE(MAX(position), 0) FROM tasks WHERE project_id = ? AND section_id = ? AND parent_id IS NULL AND id != ?", task.ProjectID, *task.SectionID, task.ID).Scan(&maxPos)
+		} else {
+			_ = s.db.QueryRow("SELECT COALESCE(MAX(position), 0) FROM tasks WHERE project_id = ? AND section_id IS NULL AND parent_id IS NULL AND id != ?", task.ProjectID, task.ID).Scan(&maxPos)
+		}
+		task.Position = maxPos + 1
 	}
 
 	deltaDays := 0

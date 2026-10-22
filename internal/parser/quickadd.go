@@ -12,7 +12,6 @@ import (
 
 var (
 	priorityRegex     = regexp.MustCompile(`(?i)(?:^|\s)(?:p|!)([1-3])(?:\s|$)`)
-	projectRegex      = regexp.MustCompile(`(?i)#([a-zA-Z0-9_\-\/]+)`)
 	locationWordRegex = regexp.MustCompile(`(?i)@([a-zA-Z0-9_\-'.]+(?:\s+[a-zA-Z0-9_\-'.]+)*)`)
 	explicitDateRegex = regexp.MustCompile(`\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b`)
 	isoDateRegex      = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})\b`)
@@ -38,14 +37,7 @@ func ParseQuickAdd(input string, now time.Time) db.QuickAddParsed {
 		work = priorityRegex.ReplaceAllString(work, " ")
 	}
 
-	// 2. Extract Project (#Project, #[Project Name], #"Project Name")
-	proj, cleanedAfterProject := extractProject(work)
-	if proj != nil {
-		result.ProjectName = proj
-		work = cleanedAfterProject
-	}
-
-	// 3. Extract Recurrence
+	// 2. Extract Recurrence
 	recurrence, cleanedAfterRecurrence := extractRecurrence(work)
 	if recurrence != "" {
 		result.Recurrence = &recurrence
@@ -492,37 +484,6 @@ func extractLocation(s string) (string, string) {
 	loc := strings.Join(words, " ")
 	cleaned := strings.Replace(s, "@"+loc, " ", 1)
 	return loc, cleaned
-}
-
-func extractProject(s string) (*string, string) {
-	// 1. Bracketed: #[Project Name]
-	if idx := strings.Index(s, "#["); idx != -1 {
-		end := strings.Index(s[idx+2:], "]")
-		if end != -1 {
-			name := strings.TrimSpace(s[idx+2 : idx+2+end])
-			cleaned := s[:idx] + " " + s[idx+2+end+1:]
-			return &name, cleaned
-		}
-	}
-
-	// 2. Quoted: #"Project Name"
-	if idx := strings.Index(s, "#\""); idx != -1 {
-		end := strings.Index(s[idx+2:], "\"")
-		if end != -1 {
-			name := strings.TrimSpace(s[idx+2 : idx+2+end])
-			cleaned := s[:idx] + " " + s[idx+2+end+1:]
-			return &name, cleaned
-		}
-	}
-
-	// 3. Simple: #Project
-	if match := projectRegex.FindStringSubmatch(s); len(match) > 1 {
-		proj := match[1]
-		cleaned := projectRegex.ReplaceAllString(s, " ")
-		return &proj, cleaned
-	}
-
-	return nil, s
 }
 
 // ExtractRecurrence is the exported version of extractRecurrence.

@@ -744,4 +744,69 @@ func TestPatchTaskDueDateCascade(t *testing.T) {
 	}
 }
 
+func TestPatchTaskRelocatePositionAppend(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	p1 := &db.Project{ID: "p1", Name: "Project 1"}
+	p2 := &db.Project{ID: "p2", Name: "Project 2"}
+	_ = store.CreateProject(p1)
+	_ = store.CreateProject(p2)
+
+	// In p1: task1 (pos 1)
+	t1 := &db.Task{ID: "t1", ProjectID: "p1", Title: "Task 1", Position: 1}
+	_ = store.CreateTask(t1)
+
+	// In p2: task2 (pos 1), task3 (pos 5)
+	t2 := &db.Task{ID: "t2", ProjectID: "p2", Title: "Task 2", Position: 1}
+	t3 := &db.Task{ID: "t3", ProjectID: "p2", Title: "Task 3", Position: 5}
+	_ = store.CreateTask(t2)
+	_ = store.CreateTask(t3)
+
+	// Relocate t1 to p2 without explicit position
+	patched, err := store.PatchTask("t1", map[string]interface{}{
+		"project_id": "p2",
+	})
+	if err != nil {
+		t.Fatalf("PatchTask failed: %v", err)
+	}
+	if patched.Position != 6 {
+		t.Errorf("Expected t1 position to be 6 (max 5 + 1), got %d", patched.Position)
+	}
+
+	// Create section in p2
+	sec := &db.Section{ID: "s1", ProjectID: "p2", Name: "Section 1"}
+	_ = store.CreateSection(sec)
+	sID := "s1"
+	t4 := &db.Task{ID: "t4", ProjectID: "p2", SectionID: &sID, Title: "Task 4", Position: 2}
+	_ = store.CreateTask(t4)
+
+	// Relocate t1 to section s1 without explicit position
+	patched, err = store.PatchTask("t1", map[string]interface{}{
+		"section_id": "s1",
+	})
+	if err != nil {
+		t.Fatalf("PatchTask section failed: %v", err)
+	}
+	if patched.Position != 3 {
+		t.Errorf("Expected t1 position in section to be 3 (max 2 + 1), got %d", patched.Position)
+	}
+
+	// Subtask parent
+	parentID := "t2"
+	c1 := &db.Task{ID: "c1", ProjectID: "p2", ParentID: &parentID, Title: "Child 1", Position: 4}
+	_ = store.CreateTask(c1)
+
+	// Relocate t1 to become child of t2 without explicit position
+	patched, err = store.PatchTask("t1", map[string]interface{}{
+		"parent_id": "t2",
+	})
+	if err != nil {
+		t.Fatalf("PatchTask parent failed: %v", err)
+	}
+	if patched.Position != 5 {
+		t.Errorf("Expected t1 position under parent to be 5 (max 4 + 1), got %d", patched.Position)
+	}
+}
+
 

@@ -87,36 +87,7 @@ export function parseQuickTokens(text, now = new Date(), ignoredTokens = null) {
     }
   }
 
-  // 2. Project (#[Project Name], #"Project Name", or #Project)
-  const bracketProjMatch = work.match(/#\[([^\]]+)\]/) || work.match(/#"([^"]+)"/);
-  if (bracketProjMatch) {
-    if (!isIgnored('project')) {
-      result.project = bracketProjMatch[1].trim();
-      result.tokens.push({
-        type: 'project',
-        text: bracketProjMatch[0],
-        value: result.project,
-        label: `#${result.project}`,
-      });
-      work = work.replace(bracketProjMatch[0], ' ');
-    }
-  } else {
-    const projMatch = work.match(/#([a-zA-Z0-9_\-\/]+)/);
-    if (projMatch) {
-      if (!isIgnored('project')) {
-        result.project = projMatch[1].trim();
-        result.tokens.push({
-          type: 'project',
-          text: projMatch[0],
-          value: result.project,
-          label: `#${result.project}`,
-        });
-        work = work.replace(projMatch[0], ' ');
-      }
-    }
-  }
-
-  // 3. Recurrence
+  // 2. Recurrence
   const recurrPatterns = [
     { re: /\bcron:([^\s]+(?:\s+[^\s]+){4})\b/i, rule: (m) => `cron:${m[1].trim()}`, label: (m) => `Cron: ${m[1].trim()}` },
     { re: /\b(?:tous les jours ouvrés|jours ouvrés|every weekday|weekdays)\b/i, rule: () => 'weekdays', label: () => 'Weekdays' },

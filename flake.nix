@@ -39,7 +39,6 @@
                 mainProgram = "get-done";
               };
             };
-            get-it-done = get-done; # Backward-compatibility alias
             default = get-done;
           };
 
@@ -48,7 +47,6 @@
               drv = self.packages.${system}.get-done;
               name = "get-done";
             };
-            get-it-done = get-done; # Backward-compatibility alias
             default = get-done;
           };
 
@@ -93,13 +91,13 @@
 
                   dataDir = lib.mkOption {
                     type = lib.types.path;
-                    default = if name == "default" then "/var/lib/get-done" else "/var/lib/get-done-${name}";
+                    default = if (name == "default" || name == "perso") then "/var/lib/getdone" else "/var/lib/getdone-${name}";
                     description = "Data directory of the Get Done instance.";
                   };
 
                   dbPath = lib.mkOption {
                     type = lib.types.path;
-                    default = "${config.dataDir}/get-done.db";
+                    default = "${config.dataDir}/getdone.db";
                     description = "Path to the SQLite database for this instance.";
                   };
 
@@ -148,7 +146,7 @@
               get-done = {
                 isSystemUser = true;
                 group = "get-done";
-                home = "/var/lib/get-done";
+                home = "/var/lib/getdone";
                 createHome = true;
                 description = "Get Done daemon user";
               };
@@ -160,8 +158,7 @@
 
             systemd.services = lib.mapAttrs' (name: inst:
               let
-                serviceName = if name == "default" then "get-done" else "get-done-${name}";
-                stateDir = lib.removePrefix "/var/lib/" (toString inst.dataDir);
+                serviceName = if name == "default" then "getdone" else "getdone-${name}";
               in
               lib.nameValuePair serviceName {
                 description = "Get Done Personal Task Manager Daemon (${name})";
@@ -176,7 +173,7 @@
                   RestartSec = 3;
                   User = inst.user;
                   Group = inst.group;
-                  StateDirectory = lib.mkIf (lib.hasPrefix "/var/lib/" (toString inst.dataDir)) stateDir;
+                  StateDirectory = lib.removePrefix "/var/lib/" (toString inst.dataDir);
                   WorkingDirectory = toString inst.dataDir;
                 };
               }
@@ -187,10 +184,8 @@
     systemOutputs // {
       nixosModules.default = nixosModule;
       nixosModules.get-done = nixosModule;
-      nixosModules.get-it-done = nixosModule;
       overlays.default = final: prev: {
         get-done = self.packages.${final.system}.default;
-        get-it-done = self.packages.${final.system}.default;
       };
     };
 }

@@ -3000,11 +3000,6 @@ body.is-dragging .project-row * {
   background: rgba(156, 207, 216, 0.15);
 }
 
-.token-preview-chip.project {
-  color: var(--rp-pine);
-  background: rgba(49, 116, 143, 0.15);
-}
-
 .token-preview-chip.location {
   color: var(--rp-foam);
   background: rgba(156, 207, 216, 0.15);

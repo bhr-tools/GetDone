@@ -18,8 +18,8 @@
         in
         {
           packages = rec {
-            get-done = pkgs.buildGoModule {
-              pname = "get-done";
+            getdone = pkgs.buildGoModule {
+              pname = "getdone";
               version = "1.0.0";
               src = ./.;
 
@@ -28,26 +28,26 @@
 
               postInstall = ''
                 if [ -f "$out/bin/server" ]; then
-                  mv "$out/bin/server" "$out/bin/get-done"
+                  mv "$out/bin/server" "$out/bin/getdone"
                 fi
               '';
 
               meta = with pkgs.lib; {
                 description = "Get Done — Minimalist Todo List with Rosé Pine design & Vim navigation";
-                homepage = "https://github.com/ben-hourlier/Get-Done";
+                homepage = "https://github.com/ben-hourlier/getdone";
                 license = licenses.mit;
-                mainProgram = "get-done";
+                mainProgram = "getdone";
               };
             };
-            default = get-done;
+            default = getdone;
           };
 
           apps = rec {
-            get-done = flake-utils.lib.mkApp {
-              drv = self.packages.${system}.get-done;
-              name = "get-done";
+            getdone = flake-utils.lib.mkApp {
+              drv = self.packages.${system}.getdone;
+              name = "getdone";
             };
-            default = get-done;
+            default = getdone;
           };
 
           devShells.default = pkgs.mkShell {
@@ -63,10 +63,10 @@
       # Native multi-instance NixOS module for server / desktop
       nixosModule = { config, lib, pkgs, ... }:
         let
-          cfg = config.services.get-done;
+          cfg = config.services.getdone;
         in
         {
-          options.services.get-done = {
+          options.services.getdone = {
             enable = lib.mkEnableOption "Get Done Server & Web Daemon";
 
             package = lib.mkOption {
@@ -115,13 +115,13 @@
 
                   user = lib.mkOption {
                     type = lib.types.str;
-                    default = "get-done";
+                    default = "getdone";
                     description = "System user under which to run the instance.";
                   };
 
                   group = lib.mkOption {
                     type = lib.types.str;
-                    default = "get-done";
+                    default = "getdone";
                     description = "System group under which to run the instance.";
                   };
 
@@ -142,18 +142,18 @@
               lib.mapAttrsToList (_: inst: lib.optional inst.openFirewall inst.port) cfg.instances
             );
 
-            users.users = lib.mkIf (lib.any (inst: inst.user == "get-done") (lib.attrValues cfg.instances)) {
-              get-done = {
+            users.users = lib.mkIf (lib.any (inst: inst.user == "getdone") (lib.attrValues cfg.instances)) {
+              getdone = {
                 isSystemUser = true;
-                group = "get-done";
+                group = "getdone";
                 home = "/var/lib/getdone";
                 createHome = true;
                 description = "Get Done daemon user";
               };
             };
 
-            users.groups = lib.mkIf (lib.any (inst: inst.group == "get-done") (lib.attrValues cfg.instances)) {
-              get-done = {};
+            users.groups = lib.mkIf (lib.any (inst: inst.group == "getdone") (lib.attrValues cfg.instances)) {
+              getdone = {};
             };
 
             systemd.services = lib.mapAttrs' (name: inst:
@@ -166,7 +166,7 @@
                 wantedBy = [ "multi-user.target" ];
 
                 serviceConfig = {
-                  ExecStart = "${cfg.package}/bin/get-done -host ${inst.host} -port ${toString inst.port} -data-dir ${toString inst.dataDir} -db ${toString inst.dbPath}"
+                  ExecStart = "${cfg.package}/bin/getdone -host ${inst.host} -port ${toString inst.port} -data-dir ${toString inst.dataDir} -db ${toString inst.dbPath}"
                     + lib.optionalString (inst.googleMapsKey != null) " -google-maps-key ${inst.googleMapsKey}"
                     + lib.optionalString inst.noAuth " -no-auth";
                   Restart = "always";
@@ -183,9 +183,9 @@
     in
     systemOutputs // {
       nixosModules.default = nixosModule;
-      nixosModules.get-done = nixosModule;
+      nixosModules.getdone = nixosModule;
       overlays.default = final: prev: {
-        get-done = self.packages.${final.system}.default;
+        getdone = self.packages.${final.system}.default;
       };
     };
 }

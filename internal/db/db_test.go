@@ -809,4 +809,142 @@ func TestPatchTaskRelocatePositionAppend(t *testing.T) {
 	}
 }
 
+func TestCreateTaskInsertAtPosition(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	p := &db.Project{ID: "p1", Name: "Project 1"}
+	_ = store.CreateProject(p)
+
+	// Create root tasks with positions 1, 2, 3
+	t1 := &db.Task{ID: "t1", ProjectID: "p1", Title: "Task 1", Position: 1}
+	t2 := &db.Task{ID: "t2", ProjectID: "p1", Title: "Task 2", Position: 2}
+	t3 := &db.Task{ID: "t3", ProjectID: "p1", Title: "Task 3", Position: 3}
+	_ = store.CreateTask(t1)
+	_ = store.CreateTask(t2)
+	_ = store.CreateTask(t3)
+
+	// Insert new task at position 2 (insert below t1)
+	tNew := &db.Task{ID: "t_new", ProjectID: "p1", Title: "Task New", Position: 2}
+	if err := store.CreateTask(tNew); err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	// Verify positions
+	t1Ref, _ := store.GetTask("t1")
+	tNewRef, _ := store.GetTask("t_new")
+	t2Ref, _ := store.GetTask("t2")
+	t3Ref, _ := store.GetTask("t3")
+
+	if t1Ref.Position != 1 {
+		t.Errorf("Expected t1 position 1, got %d", t1Ref.Position)
+	}
+	if tNewRef.Position != 2 {
+		t.Errorf("Expected t_new position 2, got %d", tNewRef.Position)
+	}
+	if t2Ref.Position != 3 {
+		t.Errorf("Expected t2 position shifted to 3, got %d", t2Ref.Position)
+	}
+	if t3Ref.Position != 4 {
+		t.Errorf("Expected t3 position shifted to 4, got %d", t3Ref.Position)
+	}
+
+	// Test with section
+	sID := "sec1"
+	_ = store.CreateSection(&db.Section{ID: sID, ProjectID: "p1", Name: "Section 1"})
+	s1Task1 := &db.Task{ID: "st1", ProjectID: "p1", SectionID: &sID, Title: "Sec Task 1", Position: 1}
+	s1Task2 := &db.Task{ID: "st2", ProjectID: "p1", SectionID: &sID, Title: "Sec Task 2", Position: 2}
+	_ = store.CreateTask(s1Task1)
+	_ = store.CreateTask(s1Task2)
+
+	// Insert in section at position 1
+	stNew := &db.Task{ID: "st_new", ProjectID: "p1", SectionID: &sID, Title: "Sec Task New", Position: 1}
+	if err := store.CreateTask(stNew); err != nil {
+		t.Fatalf("CreateTask in section failed: %v", err)
+	}
+	stNewRef, _ := store.GetTask("st_new")
+	st1Ref, _ := store.GetTask("st1")
+	st2Ref, _ := store.GetTask("st2")
+	if stNewRef.Position != 1 || st1Ref.Position != 2 || st2Ref.Position != 3 {
+		t.Errorf("Unexpected section positions: stNew=%d, st1=%d, st2=%d", stNewRef.Position, st1Ref.Position, st2Ref.Position)
+	}
+
+	// Test with subtasks
+	parID := "t1"
+	sub1 := &db.Task{ID: "sub1", ProjectID: "p1", ParentID: &parID, Title: "Sub 1", Position: 1}
+	sub2 := &db.Task{ID: "sub2", ProjectID: "p1", ParentID: &parID, Title: "Sub 2", Position: 2}
+	_ = store.CreateTask(sub1)
+	_ = store.CreateTask(sub2)
+
+	subNew := &db.Task{ID: "sub_new", ProjectID: "p1", ParentID: &parID, Title: "Sub New", Position: 2}
+	if err := store.CreateTask(subNew); err != nil {
+		t.Fatalf("CreateTask subtask failed: %v", err)
+	}
+	sub1Ref, _ := store.GetTask("sub1")
+	subNewRef, _ := store.GetTask("sub_new")
+	sub2Ref, _ := store.GetTask("sub2")
+	if sub1Ref.Position != 1 || subNewRef.Position != 2 || sub2Ref.Position != 3 {
+		t.Errorf("Unexpected subtask positions: sub1=%d, subNew=%d, sub2=%d", sub1Ref.Position, subNewRef.Position, sub2Ref.Position)
+	}
+}
+
+func TestPatchTaskInPlaceNoPositionShift(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	p := &db.Project{ID: "p1", Name: "Project 1"}
+	_ = store.CreateProject(p)
+
+	t1 := &db.Task{ID: "t1", ProjectID: "p1", Title: "Task 1", Position: 1}
+	t2 := &db.Task{ID: "t2", ProjectID: "p1", Title: "Task 2", Position: 2}
+	t3 := &db.Task{ID: "t3", ProjectID: "p1", Title: "Task 3", Position: 3}
+	_ = store.CreateTask(t1)
+	_ = store.CreateTask(t2)
+	_ = store.CreateTask(t3)
+
+	// In-place edit of title on t2 (position 2)
+	patched, err := store.PatchTask("t2", map[string]interface{}{
+		"title": "Task 2 Updated",
+	})
+	if err != nil {
+		t.Fatalf("PatchTask failed: %v", err)
+	}
+	if patched.Position != 2 {
+		t.Errorf("Expected t2 position to stay 2 on title update, got %d", patched.Position)
+	}
+
+	// In-place edit passing identical project_id
+	patched, err = store.PatchTask("t2", map[string]interface{}{
+		"project_id": "p1",
+	})
+	if err != nil {
+		t.Fatalf("PatchTask failed: %v", err)
+	}
+	if patched.Position != 2 {
+		t.Errorf("Expected t2 position to stay 2 when project_id unchanged, got %d", patched.Position)
+	}
+
+	// In-place edit passing nil section_id when it was already nil
+	patched, err = store.PatchTask("t2", map[string]interface{}{
+		"section_id": nil,
+	})
+	if err != nil {
+		t.Fatalf("PatchTask failed: %v", err)
+	}
+	if patched.Position != 2 {
+		t.Errorf("Expected t2 position to stay 2 when section_id unchanged (nil), got %d", patched.Position)
+	}
+
+	// In-place edit passing nil parent_id when it was already nil
+	patched, err = store.PatchTask("t2", map[string]interface{}{
+		"parent_id": nil,
+	})
+	if err != nil {
+		t.Fatalf("PatchTask failed: %v", err)
+	}
+	if patched.Position != 2 {
+		t.Errorf("Expected t2 position to stay 2 when parent_id unchanged (nil), got %d", patched.Position)
+	}
+}
+
 

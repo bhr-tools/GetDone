@@ -696,38 +696,54 @@ func (s *Store) CreateTask(t *Task) error {
 	t.CreatedAt = time.Now()
 	t.UpdatedAt = time.Now()
 
-	if t.Position == 0 {
-		var maxPos sql.NullInt64
-		if t.ParentID != nil && *t.ParentID != "" {
-			_ = s.db.QueryRow("SELECT MAX(position) FROM tasks WHERE parent_id = ?", *t.ParentID).Scan(&maxPos)
-		} else if t.SectionID != nil && *t.SectionID != "" {
-			_ = s.db.QueryRow("SELECT MAX(position) FROM tasks WHERE project_id = ? AND section_id = ? AND parent_id IS NULL", t.ProjectID, *t.SectionID).Scan(&maxPos)
-		} else {
-			_ = s.db.QueryRow("SELECT MAX(position) FROM tasks WHERE project_id = ? AND section_id IS NULL AND parent_id IS NULL", t.ProjectID).Scan(&maxPos)
-		}
-		if maxPos.Valid {
-			t.Position = int(maxPos.Int64) + 1
-		} else {
-			t.Position = 1
-		}
-	}
-
 	isCollapsed := 0
 	if t.IsCollapsed {
 		isCollapsed = 1
 	}
 
-	_, err := s.db.Exec(`
-		INSERT INTO tasks (
-			id, project_id, section_id, parent_id, title, description,
-			priority, due_date, recurrence, location,
-			position, is_collapsed, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.ProjectID, t.SectionID, t.ParentID, t.Title, t.Description,
-		t.Priority, t.DueDate, t.Recurrence, t.Location,
-		t.Position, isCollapsed, t.CreatedAt, t.UpdatedAt)
+	return s.RunInTx(func(tx *sql.Tx) error {
+		if t.Position > 0 {
+			if t.ParentID != nil && *t.ParentID != "" {
+				if _, err := tx.Exec("UPDATE tasks SET position = position + 1 WHERE parent_id = ? AND position >= ?", *t.ParentID, t.Position); err != nil {
+					return err
+				}
+			} else if t.SectionID != nil && *t.SectionID != "" {
+				if _, err := tx.Exec("UPDATE tasks SET position = position + 1 WHERE project_id = ? AND section_id = ? AND parent_id IS NULL AND position >= ?", t.ProjectID, *t.SectionID, t.Position); err != nil {
+					return err
+				}
+			} else {
+				if _, err := tx.Exec("UPDATE tasks SET position = position + 1 WHERE project_id = ? AND section_id IS NULL AND parent_id IS NULL AND position >= ?", t.ProjectID, t.Position); err != nil {
+					return err
+				}
+			}
+		} else {
+			var maxPos sql.NullInt64
+			if t.ParentID != nil && *t.ParentID != "" {
+				_ = tx.QueryRow("SELECT MAX(position) FROM tasks WHERE parent_id = ?", *t.ParentID).Scan(&maxPos)
+			} else if t.SectionID != nil && *t.SectionID != "" {
+				_ = tx.QueryRow("SELECT MAX(position) FROM tasks WHERE project_id = ? AND section_id = ? AND parent_id IS NULL", t.ProjectID, *t.SectionID).Scan(&maxPos)
+			} else {
+				_ = tx.QueryRow("SELECT MAX(position) FROM tasks WHERE project_id = ? AND section_id IS NULL AND parent_id IS NULL", t.ProjectID).Scan(&maxPos)
+			}
+			if maxPos.Valid {
+				t.Position = int(maxPos.Int64) + 1
+			} else {
+				t.Position = 1
+			}
+		}
 
-	return err
+		_, err := tx.Exec(`
+			INSERT INTO tasks (
+				id, project_id, section_id, parent_id, title, description,
+				priority, due_date, recurrence, location,
+				position, is_collapsed, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, t.ID, t.ProjectID, t.SectionID, t.ParentID, t.Title, t.Description,
+			t.Priority, t.DueDate, t.Recurrence, t.Location,
+			t.Position, isCollapsed, t.CreatedAt, t.UpdatedAt)
+
+		return err
+	})
 }
 
 func (s *Store) UpdateTask(t *Task) error {
@@ -1199,6 +1215,10 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		return nil, err
 	}
 
+	origProj := task.ProjectID
+	origSec := task.SectionID
+	origPar := task.ParentID
+
 	var oldDue *string
 	if task.DueDate != nil && strings.TrimSpace(*task.DueDate) != "" {
 		s := strings.TrimSpace(*task.DueDate)
@@ -1218,46 +1238,58 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 	projectIdUpdated := false
 	if v, ok := updates["project_id"]; ok {
 		if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
-			task.ProjectID = strings.TrimSpace(str)
-			projectIdUpdated = true
+			trimmed := strings.TrimSpace(str)
+			task.ProjectID = trimmed
+			if trimmed != origProj {
+				projectIdUpdated = true
+			}
 		}
 	}
 	sectionIdUpdated := false
 	if v, ok := updates["section_id"]; ok {
-		sectionIdUpdated = true
-		if v == nil {
-			task.SectionID = nil
-		} else if str, ok := v.(string); ok {
-			if strings.TrimSpace(str) == "" {
-				task.SectionID = nil
-			} else {
-				trimmed := strings.TrimSpace(str)
-				task.SectionID = &trimmed
+		var newSec *string
+		if str, ok := v.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if trimmed != "" {
+				newSec = &trimmed
 			}
 		}
+		task.SectionID = newSec
+		if (origSec == nil && newSec != nil) || (origSec != nil && newSec == nil) || (origSec != nil && newSec != nil && *origSec != *newSec) {
+			sectionIdUpdated = true
+		}
 	}
+	parentIdUpdated := false
 	if v, ok := updates["parent_id"]; ok {
-		if v == nil {
-			task.ParentID = nil
-		} else if str, ok := v.(string); ok {
-			if strings.TrimSpace(str) == "" {
-				task.ParentID = nil
-			} else {
-				trimmed := strings.TrimSpace(str)
-				task.ParentID = &trimmed
-				if !projectIdUpdated {
-					var parentProj string
-					var parentSec sql.NullString
-					if err := s.db.QueryRow("SELECT project_id, section_id FROM tasks WHERE id = ?", trimmed).Scan(&parentProj, &parentSec); err == nil && parentProj != "" {
-						task.ProjectID = parentProj
+		var newPar *string
+		if str, ok := v.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if trimmed != "" {
+				newPar = &trimmed
+			}
+		}
+		task.ParentID = newPar
+		if (origPar == nil && newPar != nil) || (origPar != nil && newPar == nil) || (origPar != nil && newPar != nil && *origPar != *newPar) {
+			parentIdUpdated = true
+		}
+		if newPar != nil {
+			trimmed := *newPar
+			if !projectIdUpdated {
+				var parentProj string
+				var parentSec sql.NullString
+				if err := s.db.QueryRow("SELECT project_id, section_id FROM tasks WHERE id = ?", trimmed).Scan(&parentProj, &parentSec); err == nil && parentProj != "" {
+					task.ProjectID = parentProj
+					if task.ProjectID != origProj {
 						projectIdUpdated = true
-						if !sectionIdUpdated {
+					}
+					if !sectionIdUpdated {
+						var secPtr *string
+						if parentSec.Valid && parentSec.String != "" {
+							secPtr = &parentSec.String
+						}
+						task.SectionID = secPtr
+						if (origSec == nil && secPtr != nil) || (origSec != nil && secPtr == nil) || (origSec != nil && secPtr != nil && *origSec != *secPtr) {
 							sectionIdUpdated = true
-							if parentSec.Valid && parentSec.String != "" {
-								task.SectionID = &parentSec.String
-							} else {
-								task.SectionID = nil
-							}
 						}
 					}
 				}
@@ -1321,7 +1353,7 @@ func (s *Store) PatchTask(id string, updates map[string]interface{}) (*Task, err
 		case int:
 			task.Position = num
 		}
-	} else if projectIdUpdated || sectionIdUpdated {
+	} else if projectIdUpdated || sectionIdUpdated || parentIdUpdated {
 		var maxPos int
 		if task.ParentID != nil && *task.ParentID != "" {
 			_ = s.db.QueryRow("SELECT COALESCE(MAX(position), 0) FROM tasks WHERE parent_id = ? AND id != ?", *task.ParentID, task.ID).Scan(&maxPos)

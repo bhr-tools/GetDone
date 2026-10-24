@@ -2917,6 +2917,11 @@ class GetDoneApp {
     if (defaults.sectionId) composer.dataset.sectionId = defaults.sectionId;
     if (defaults.projectId) composer.dataset.projectId = defaults.projectId;
     if (defaults.parentId) composer.dataset.parentId = defaults.parentId;
+    if (defaults.position !== undefined && defaults.position !== null && defaults.position > 0) {
+      composer.dataset.position = defaults.position;
+    } else {
+      delete composer.dataset.position;
+    }
 
     let parsedState = {
       dueDate: defaults.dueDate || null,
@@ -6194,18 +6199,20 @@ class GetDoneApp {
   }
 
   openQuickAddBelow() {
-    const task = this.getSelectedTask();
-    if (task) {
-      const row = document.querySelector(`.task-row[data-id="${task.id}"]`);
+    const current = this.getSelectedTask();
+    if (current) {
+      const row = document.querySelector(`.task-row[data-id="${current.id}"]`);
       if (row) {
         const secBlock = row.closest('.section-block') || row.closest('.upcoming-day-group') || row.parentElement;
         const taskList = row.closest('.task-list') || row.parentElement;
         this.openInlineComposer(secBlock, taskList, {
-          projectId: task.project_id,
-          sectionId: task.section_id,
+          projectId: current.project_id,
+          sectionId: current.section_id,
+          parentId: current.parent_id,
+          position: (current.position || 0) + 1,
           dueDate: null,
           insertAfterEl: row,
-          afterTaskId: task.id,
+          afterTaskId: current.id,
         });
         return;
       }
@@ -6701,6 +6708,12 @@ class GetDoneApp {
       location: location,
     };
     if (composerEl.dataset.parentId) payload.parent_id = composerEl.dataset.parentId;
+    if (composerEl.dataset.position) {
+      const pos = parseInt(composerEl.dataset.position, 10);
+      if (pos > 0) {
+        payload.position = pos;
+      }
+    }
 
     let createdTask = null;
     try {
@@ -6724,6 +6737,9 @@ class GetDoneApp {
       delete composerEl.dataset.dueDate;
       delete composerEl.dataset.recurrence;
       delete composerEl.dataset.location;
+      if (composerEl.dataset.position) {
+        composerEl.dataset.position = (createdTask.position || parseInt(composerEl.dataset.position, 10)) + 1;
+      }
       if (composerEl._ignoredTokens) composerEl._ignoredTokens.clear();
 
       const previewChips = composerEl.querySelector('.composer-chips-preview');
@@ -6756,7 +6772,14 @@ class GetDoneApp {
       } else {
         if (!document.body.contains(composerEl)) {
           let reinserted = false;
-          if (payload.section_id) {
+          if (createdTask && createdTask.id) {
+            const newRow = document.querySelector(`.task-row[data-id="${createdTask.id}"]`);
+            if (newRow) {
+              newRow.after(composerEl);
+              reinserted = true;
+            }
+          }
+          if (!reinserted && payload.section_id) {
             const secBlock = document.querySelector(`.section-block[data-section-id="${payload.section_id}"]`);
             if (secBlock) {
               const secList = secBlock.querySelector('.task-list');

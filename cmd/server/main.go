@@ -1,14 +1,18 @@
+// Command server runs Get Done: the JSON API and the embedded web app.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -18,112 +22,120 @@ import (
 	"github.com/ben/get-done/web"
 )
 
+// Each flag defaults to its environment variable, so the binary is configured
+// with flags (NixOS module) or environment (container) alike.
 func main() {
-	var (
-		portFlag          = flag.Int("port", 8080, "HTTP server port (or PORT env)")
-		hostFlag          = flag.String("host", "127.0.0.1", "HTTP server host (or HOST env)")
-		dataDirFlag       = flag.String("data-dir", "./data", "Directory for SQLite database (or DATA_DIR env)")
-		dbPathFlag  = flag.String("db", "", "Path to SQLite database file (or DB_PATH env, overrides -data-dir)")
-		noAuthFlag  = flag.Bool("no-auth", false, "Disable password authentication (or NO_AUTH=true env)")
-	)
+	host := flag.String("host", envOr("HOST", "127.0.0.1"), "listen address (env HOST)")
+	port := flag.Int("port", envInt("PORT", 8080), "listen port (env PORT)")
+	dataDir := flag.String("data-dir", envOr("DATA_DIR", "./data"), "directory of the database (env DATA_DIR)")
+	dbPath := flag.String("db", os.Getenv("DB_PATH"), "database file, overrides -data-dir (env DB_PATH)")
+	noAuth := flag.Bool("no-auth", envBool("NO_AUTH"), "disable the master password (env NO_AUTH=true)")
 	flag.Parse()
 
-	port := *portFlag
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		fmt.Sscanf(envPort, "%d", &port)
+	if *port < 1 || *port > 65535 {
+		log.Fatalf("invalid port %d", *port)
+	}
+	path := *dbPath
+	if path == "" {
+		path = filepath.Join(*dataDir, "getdone.db")
 	}
 
-	host := *hostFlag
-	if envHost := os.Getenv("HOST"); envHost != "" {
-		host = envHost
-	}
-
-	dataDir := *dataDirFlag
-	if envDataDir := os.Getenv("DATA_DIR"); envDataDir != "" {
-		dataDir = envDataDir
-	}
-
-	dbPath := *dbPathFlag
-	if envDB := os.Getenv("DB_PATH"); envDB != "" {
-		dbPath = envDB
-	}
-	if dbPath == "" {
-		dbPath = filepath.Join(dataDir, "getdone.db")
-	}
-
-	noAuth := *noAuthFlag
-	if envNoAuth := os.Getenv("NO_AUTH"); envNoAuth == "1" || strings.EqualFold(envNoAuth, "true") {
-		noAuth = true
-	}
-
-	store, err := db.NewStore(dbPath)
+	store, err := db.Open(path)
 	if err != nil {
-		log.Fatalf("❌ Failed to initialize database: %v", err)
+		log.Fatalf("database: %v", err)
 	}
 	defer store.Close()
 
-	mux := http.NewServeMux()
-
-	// Register API routes
-	apiHandler := api.NewAPI(store, noAuth)
-	apiHandler.RegisterRoutes(mux)
-
-	// Web Static Files (embedded)
-	webSubFS := web.Files
-	fileServer := http.FileServer(http.FS(webSubFS))
-
-	// Route frontend
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			http.NotFound(w, r)
-			return
-		}
-
-		// Try opening the file
-		cleanPath := strings.TrimPrefix(r.URL.Path, "/")
-		if cleanPath == "" {
-			cleanPath = "index.html"
-		}
-
-		f, err := webSubFS.Open(cleanPath)
-		if err == nil {
-			f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-
-		// SPA fallback to index.html
-		r.URL.Path = "/"
-		fileServer.ServeHTTP(w, r)
-	})
-
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
 	server := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:              addr,
+		Handler:           newHandler(store, *noAuth),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
-	log.Printf("✓ get-done starting on http://%s (db: %s)", addr, dbPath)
-
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ HTTP server error: %v", err)
+		log.Printf("Get Done listening on http://%s (database %s)", addr, path)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("http server: %v", err)
 		}
 	}()
 
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("✓ get-done shutting down gracefully...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	log.Println("shutting down")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("❌ Server forced to shutdown: %v", err)
+		log.Printf("shutdown: %v", err)
 	}
-	log.Println("✓ get-done stopped.")
+}
+
+// newHandler routes the API, the health check and the web app.
+func newHandler(store *db.Store, noAuth bool) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/api/", api.New(store, noAuth).Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.Ping(); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprintln(w, "ok")
+	})
+	mux.Handle("/", noCache(http.FileServerFS(web.Files)))
+	return securityHeaders(mux)
+}
+
+// noCache makes browsers revalidate the web app on every load, so an upgrade
+// never mixes old and new JavaScript modules.
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func envOr(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("invalid %s=%q: not a number", key, v)
+	}
+	return n
+}
+
+func envBool(key string) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Fatalf("invalid %s=%q: expected true or false", key, v)
+	}
+	return b
 }

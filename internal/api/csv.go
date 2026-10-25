@@ -2,503 +2,308 @@ package api
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/ben/get-done/internal/db"
 	"github.com/ben/get-done/internal/parser"
-	"github.com/google/uuid"
 )
 
-// handleExportCSV exports all tasks and sections of a project as a Todoist-compatible CSV.
-func (a *API) handleExportCSV(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+// Todoist's CSV template columns.
+var csvHeader = []string{"TYPE", "CONTENT", "DESCRIPTION", "PRIORITY", "INDENT", "AUTHOR", "RESPONSIBLE", "DATE", "DATE_LANG", "TIMEZONE"}
 
-	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
-	if projectID == "" {
-		projectID = "inbox"
-	}
+// Locations have no Todoist column; they travel in the description.
+const locationPrefix = "Location: "
 
-	proj, err := a.store.GetProject(projectID)
+// In Todoist CSV files, PRIORITY 1 is the highest and 4 the lowest ("normal").
+var todoistPriority = map[int]string{1: "1", 2: "2", 3: "4"}
+
+func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	project, err := a.store.GetProject(projectID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "project not found")
+		fail(w, r, err)
 		return
 	}
-
 	sections, err := a.store.ListSections(projectID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		fail(w, r, err)
 		return
 	}
-
-	tasks, err := a.store.ListProjectTasksForExport(projectID)
+	view := "project"
+	if projectID == db.InboxID {
+		view = "inbox"
+	}
+	roots, err := a.store.ListTasks(db.TaskFilter{View: view, ProjectID: projectID, Sort: "manual"})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		fail(w, r, err)
 		return
-	}
-
-	// Organize tasks into hierarchy
-	childrenMap := make(map[string][]*db.Task)
-	sectionMap := make(map[string][]*db.Task)
-	var unsectionedRoots []*db.Task
-
-	for _, t := range tasks {
-		if t.ParentID != nil && *t.ParentID != "" {
-			childrenMap[*t.ParentID] = append(childrenMap[*t.ParentID], t)
-		} else if t.SectionID != nil && *t.SectionID != "" {
-			sectionMap[*t.SectionID] = append(sectionMap[*t.SectionID], t)
-		} else {
-			unsectionedRoots = append(unsectionedRoots, t)
-		}
 	}
 
 	var buf bytes.Buffer
-	wCsv := csv.NewWriter(&buf)
-
-	// Todoist Standard CSV Header
-	_ = wCsv.Write([]string{
-		"TYPE", "CONTENT", "DESCRIPTION", "PRIORITY", "INDENT", "AUTHOR", "RESPONSIBLE", "DATE", "DATE_LANG", "TIMEZONE",
-	})
-
-	var writeTaskTree func(t *db.Task, depth int)
-	writeTaskTree = func(t *db.Task, depth int) {
-		// Priority mapping: 1 -> 1, 2 -> 2, 3 -> 4 (Todoist p4/normal)
-		priStr := "4"
-		if t.Priority == 1 {
-			priStr = "1"
-		} else if t.Priority == 2 {
-			priStr = "2"
-		} else if t.Priority == 3 {
-			priStr = "4"
+	out := csv.NewWriter(&buf)
+	_ = out.Write(csvHeader)
+	var writeTree func(t *db.Task, indent int)
+	writeTree = func(t *db.Task, indent int) {
+		_ = out.Write([]string{"task", t.Title, exportDescription(t), todoistPriority[t.Priority],
+			strconv.Itoa(indent), "", "", exportDate(t), "en", ""})
+		for _, sub := range t.Subtasks {
+			writeTree(sub, indent+1)
 		}
-
-		// Description & Location
-		desc := t.Description
-		if t.Location != nil && *t.Location != "" {
-			if desc != "" {
-				desc = desc + "\nLocation: " + *t.Location
-			} else {
-				desc = "Location: " + *t.Location
+	}
+	for _, t := range roots {
+		if t.SectionID == nil {
+			writeTree(t, 1)
+		}
+	}
+	for _, sec := range sections {
+		_ = out.Write([]string{"section", sec.Name, "", "", "", "", "", "", "", ""})
+		for _, t := range roots {
+			if t.SectionID != nil && *t.SectionID == sec.ID {
+				writeTree(t, 1)
 			}
 		}
-
-		// Date & Recurrence
-		dateStr := ""
-		if t.Recurrence != nil && *t.Recurrence != "" {
-			dateStr = formatRecurrenceForTodoist(*t.Recurrence, t.DueDate)
-		} else if t.DueDate != nil && *t.DueDate != "" {
-			dateStr = *t.DueDate
-		}
-
-		_ = wCsv.Write([]string{
-			"task",
-			t.Title,
-			desc,
-			priStr,
-			strconv.Itoa(depth),
-			"",
-			"",
-			dateStr,
-			"en",
-			"",
-		})
-
-		for _, child := range childrenMap[t.ID] {
-			writeTaskTree(child, depth+1)
-		}
 	}
-
-	// 1. Root unsectioned tasks first
-	for _, root := range unsectionedRoots {
-		writeTaskTree(root, 1)
-	}
-
-	// 2. Sections and their tasks
-	for _, sec := range sections {
-		_ = wCsv.Write([]string{
-			"section",
-			sec.Name,
-			"",
-			"1",
-			"1",
-			"",
-			"",
-			"",
-			"en",
-			"",
-		})
-		for _, st := range sectionMap[sec.ID] {
-			writeTaskTree(st, 1)
-		}
-	}
-
-	wCsv.Flush()
-	if err := wCsv.Error(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate CSV: "+err.Error())
+	out.Flush()
+	if err := out.Error(); err != nil {
+		fail(w, r, err)
 		return
 	}
 
-	// Sanitize filename
-	safeName := strings.TrimSpace(proj.Name)
-	if safeName == "" {
-		safeName = "project"
-	}
-	safeName = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
-			return r
-		}
-		return '_'
-	}, safeName)
-	filename := fmt.Sprintf("%s.csv", safeName)
-
+	name := exportFileName(project.Name)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`,
+		asciiFileName(name), url.PathEscape(name)))
 	_, _ = w.Write(buf.Bytes())
 }
 
-// formatRecurrenceForTodoist converts internal recurrence strings to Todoist natural syntax.
-func formatRecurrenceForTodoist(rec string, dueDate *string) string {
-	var text string
-	switch {
-	case rec == "daily":
-		text = "every day"
-	case rec == "weekly":
-		text = "every week"
-	case rec == "monthly":
-		text = "every month"
-	case rec == "yearly":
-		text = "every year"
-	case rec == "weekdays":
-		text = "every weekday"
-	case strings.HasPrefix(rec, "weekly:"):
-		day := strings.TrimPrefix(rec, "weekly:")
-		text = "every " + day
-	default:
-		text = rec
+func exportDescription(t *db.Task) string {
+	if t.Location == nil {
+		return t.Description
 	}
+	if t.Description == "" {
+		return locationPrefix + *t.Location
+	}
+	return t.Description + "\n" + locationPrefix + *t.Location
+}
 
-	if dueDate != nil && *dueDate != "" {
-		if strings.Contains(*dueDate, " ") {
-			parts := strings.SplitN(*dueDate, " ", 2)
-			text += " at " + parts[1]
+// exportDate writes the due date and recurrence in Todoist's natural syntax,
+// which the importer below reads back.
+func exportDate(t *db.Task) string {
+	if t.Recurrence == nil {
+		if t.DueDate == nil {
+			return ""
+		}
+		return *t.DueDate
+	}
+	rule := *t.Recurrence
+	text := map[string]string{
+		"daily": "every day", "weekdays": "every weekday", "weekly": "every week",
+		"monthly": "every month", "yearly": "every year",
+	}[rule]
+	switch {
+	case text != "":
+	case strings.HasPrefix(rule, "weekly:"):
+		text = "every " + strings.TrimPrefix(rule, "weekly:")
+	default:
+		text = rule // cron rules have no Todoist equivalent
+	}
+	if t.DueDate != nil {
+		day, clock, _ := strings.Cut(*t.DueDate, " ")
+		text += " starting " + day
+		if clock != "" {
+			text += " at " + clock
 		}
 	}
 	return text
 }
 
-// handleImportCSV imports a Todoist-compatible CSV into the specified project.
-func (a *API) handleImportCSV(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+func exportFileName(projectName string) string {
+	name := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
+			return r
+		}
+		return '_'
+	}, strings.TrimSpace(projectName))
+	if strings.Trim(name, "_ ") == "" {
+		name = "project"
 	}
+	return name + ".csv"
+}
 
-	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
-	if projectID == "" {
-		projectID = "inbox"
-	}
+func asciiFileName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r > unicode.MaxASCII {
+			return '_'
+		}
+		return r
+	}, name)
+}
 
-	_, err := a.store.GetProject(projectID)
+func (a *API) importCSV(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	data, err := readUpload(w, r)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "project not found")
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "The file is larger than 10 MB")
+		} else {
+			writeError(w, http.StatusBadRequest, "Could not read the uploaded file: "+err.Error())
+		}
 		return
 	}
+	rows, err := decodeCSV(data, parser.NormalizeToday(r.URL.Query().Get("today")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := a.store.ImportRows(projectID, rows)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
 
-	var csvData []byte
-	contentType := r.Header.Get("Content-Type")
-
-	if strings.HasPrefix(contentType, "multipart/form-data") {
-		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			writeError(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
-			return
+// readUpload returns the CSV bytes, sent either as a multipart "file" field
+// or as the raw request body.
+func readUpload(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBody)
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxUploadBody); err != nil {
+			return nil, err
 		}
 		file, _, err := r.FormFile("file")
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "missing 'file' in upload: "+err.Error())
-			return
+			return nil, err
 		}
 		defer file.Close()
-		csvData, err = io.ReadAll(file)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "failed to read uploaded file: "+err.Error())
-			return
-		}
-	} else {
-		var err error
-		csvData, err = io.ReadAll(r.Body)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "failed to read request body: "+err.Error())
-			return
-		}
+		return io.ReadAll(file)
 	}
+	return io.ReadAll(r.Body)
+}
 
-	if len(csvData) == 0 {
-		writeError(w, http.StatusBadRequest, "empty CSV content")
-		return
+// decodeCSV parses a Todoist CSV (comma, semicolon or tab separated, with or
+// without a UTF-8 BOM) into import rows.
+func decodeCSV(data []byte, today string) ([]db.ImportRow, error) {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, errors.New("The file is empty")
 	}
-
-	// Strip UTF-8 BOM if present
-	csvData = bytes.TrimPrefix(csvData, []byte("\xef\xbb\xbf"))
-
-	// Detect delimiter
-	sampleSize := len(csvData)
-	if sampleSize > 2048 {
-		sampleSize = 2048
-	}
-	sample := csvData[:sampleSize]
-
-	commaCount := bytes.Count(sample, []byte{','})
-	semicolonCount := bytes.Count(sample, []byte{';'})
-	tabCount := bytes.Count(sample, []byte{'\t'})
-
-	delimiter := ','
-	if semicolonCount > commaCount && semicolonCount > tabCount {
-		delimiter = ';'
-	} else if tabCount > commaCount && tabCount > semicolonCount {
-		delimiter = '\t'
-	}
-
-	reader := csv.NewReader(bytes.NewReader(csvData))
-	reader.Comma = delimiter
+	reader := csv.NewReader(bytes.NewReader(data))
+	reader.Comma = detectDelimiter(data)
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1
-
 	records, err := reader.ReadAll()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "CSV parse error: "+err.Error())
-		return
+		return nil, fmt.Errorf("The file is not a valid CSV: %v", err)
 	}
-
 	if len(records) < 2 {
-		writeError(w, http.StatusBadRequest, "CSV must contain at least a header and one row")
-		return
+		return nil, errors.New("The file must contain a header and at least one row")
 	}
 
-	// Map header columns
-	colType := -1
-	colContent := -1
-	colDesc := -1
-	colPriority := -1
-	colIndent := -1
-	colDate := -1
-	colLocation := -1
-
-	for idx, col := range records[0] {
-		norm := strings.TrimSpace(strings.ToUpper(col))
-		switch norm {
-		case "TYPE":
-			colType = idx
-		case "CONTENT", "TITLE", "TASK", "NAME":
-			colContent = idx
-		case "DESCRIPTION", "DESC", "NOTES", "NOTE":
-			colDesc = idx
-		case "PRIORITY":
-			colPriority = idx
-		case "INDENT":
-			colIndent = idx
-		case "DATE", "DUE DATE", "DUE_DATE":
-			colDate = idx
-		case "LOCATION", "LIEU", "ADRESSE":
-			colLocation = idx
+	cols := map[string]int{}
+	aliases := map[string]string{
+		"TYPE": "type", "CONTENT": "content", "TITLE": "content", "TASK": "content", "NAME": "content",
+		"DESCRIPTION": "description", "DESC": "description", "NOTES": "description", "NOTE": "description",
+		"PRIORITY": "priority", "INDENT": "indent", "DATE": "date", "DUE DATE": "date", "DUE_DATE": "date",
+		"LOCATION": "location", "LIEU": "location", "ADRESSE": "location",
+	}
+	for i, name := range records[0] {
+		if key, ok := aliases[strings.ToUpper(strings.TrimSpace(name))]; ok {
+			if _, seen := cols[key]; !seen {
+				cols[key] = i
+			}
 		}
 	}
-
-	if colContent == -1 {
-		writeError(w, http.StatusBadRequest, "missing required CONTENT/TITLE column in CSV")
-		return
+	if _, ok := cols["content"]; !ok {
+		return nil, errors.New("The file has no CONTENT (or TITLE) column")
+	}
+	field := func(rec []string, key string) string {
+		if i, ok := cols[key]; ok && i < len(rec) {
+			return strings.TrimSpace(rec[i])
+		}
+		return ""
 	}
 
-	tasksCount := 0
-	sectionsCount := 0
-
-	err = a.store.RunInTx(func(tx *sql.Tx) error {
-		var maxSecPos int
-		_ = tx.QueryRow("SELECT COALESCE(MAX(position), 0) FROM sections WHERE project_id = ?", projectID).Scan(&maxSecPos)
-
-		var maxTaskPos int
-		_ = tx.QueryRow("SELECT COALESCE(MAX(position), 0) FROM tasks WHERE project_id = ?", projectID).Scan(&maxTaskPos)
-
-		var currentSectionID *string
-		indentMap := make(map[int]string)
-		var lastCreatedTaskID string
-
-		getVal := func(row []string, idx int) string {
-			if idx >= 0 && idx < len(row) {
-				return strings.TrimSpace(row[idx])
-			}
-			return ""
+	rows := make([]db.ImportRow, 0, len(records)-1)
+	for _, rec := range records[1:] {
+		row := db.ImportRow{
+			Type:    strings.ToLower(field(rec, "type")),
+			Content: field(rec, "content"),
+			Indent:  1,
 		}
-
-		for i := 1; i < len(records); i++ {
-			row := records[i]
-			rowType := "task"
-			if colType >= 0 {
-				t := strings.ToLower(getVal(row, colType))
-				if t != "" {
-					rowType = t
-				}
-			}
-
-			content := getVal(row, colContent)
-			if content == "" {
-				continue
-			}
-
-			if rowType == "section" {
-				var secID string
-				err := tx.QueryRow("SELECT id FROM sections WHERE project_id = ? AND LOWER(name) = LOWER(?)", projectID, content).Scan(&secID)
-				if err != nil {
-					secID = uuid.New().String()
-					maxSecPos++
-					_, err := tx.Exec("INSERT INTO sections (id, project_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)",
-						secID, projectID, content, maxSecPos, time.Now())
-					if err != nil {
-						return err
-					}
-					sectionsCount++
-				}
-				currentSectionID = &secID
-				indentMap = make(map[int]string)
-				lastCreatedTaskID = ""
-				continue
-			}
-
-			if rowType == "note" {
-				if lastCreatedTaskID != "" {
-					_, _ = tx.Exec(`UPDATE tasks SET description = CASE WHEN description = '' THEN ? ELSE description || char(10) || ? END WHERE id = ?`, content, content, lastCreatedTaskID)
-				}
-				continue
-			}
-
-			// Task row
-			desc := getVal(row, colDesc)
-
-			var location *string
-			if colLocation >= 0 {
-				loc := getVal(row, colLocation)
-				if loc != "" {
-					location = &loc
-				}
-			}
-			if location == nil && desc != "" {
-				lines := strings.Split(desc, "\n")
-				var cleanLines []string
-				for _, l := range lines {
-					trimmed := strings.TrimSpace(l)
-					if strings.HasPrefix(strings.ToLower(trimmed), "location:") {
-						loc := strings.TrimSpace(trimmed[9:])
-						if loc != "" {
-							location = &loc
-						}
-					} else {
-						cleanLines = append(cleanLines, l)
-					}
-				}
-				desc = strings.TrimSpace(strings.Join(cleanLines, "\n"))
-			}
-
-			priVal := 3
-			if colPriority >= 0 {
-				switch getVal(row, colPriority) {
-				case "1":
-					priVal = 1
-				case "2":
-					priVal = 2
-				case "3":
-					priVal = 3
-				case "4":
-					priVal = 3
-				}
-			}
-
-			indent := 1
-			if colIndent >= 0 {
-				if v, err := strconv.Atoi(getVal(row, colIndent)); err == nil && v >= 1 {
-					indent = v
-				}
-			}
-
-			var parentID *string
-			if indent > 1 {
-				if pid, ok := indentMap[indent-1]; ok && pid != "" {
-					parentID = &pid
-				} else {
-					bestK := 0
-					for k := range indentMap {
-						if k < indent && k > bestK {
-							bestK = k
-						}
-					}
-					if bestK > 0 {
-						pid := indentMap[bestK]
-						parentID = &pid
-					}
-				}
-			}
-
-			secID := currentSectionID
-
-			var dueDate *string
-			var recurrence *string
-			if colDate >= 0 {
-				dateStr := getVal(row, colDate)
-				if dateStr != "" {
-					rec, cleaned := parser.ExtractRecurrence(dateStr)
-					if rec != "" {
-						recurrence = &rec
-					}
-					due, _ := parser.ExtractDueDate(cleaned, time.Now())
-					if due != "" {
-						dueDate = &due
-					} else if strings.Contains(dateStr, "-") {
-						dueDate = &dateStr
-					}
-				}
-			}
-
-			taskID := uuid.New().String()
-			maxTaskPos++
-			now := time.Now()
-
-			_, err := tx.Exec(`
-				INSERT INTO tasks (id, project_id, section_id, parent_id, title, description, priority, due_date, recurrence, location, position, is_collapsed, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-			`, taskID, projectID, secID, parentID, content, desc, priVal, dueDate, recurrence, location, maxTaskPos, now, now)
-			if err != nil {
-				return err
-			}
-
-			indentMap[indent] = taskID
-			for k := range indentMap {
-				if k > indent {
-					delete(indentMap, k)
-				}
-			}
-			lastCreatedTaskID = taskID
-			tasksCount++
+		if row.Type == "" {
+			row.Type = "task"
 		}
-		return nil
-	})
-
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to import CSV: "+err.Error())
-		return
+		if n, err := strconv.Atoi(field(rec, "indent")); err == nil && n > 1 {
+			row.Indent = n
+		}
+		row.Priority = map[string]int{"1": 1, "2": 2}[field(rec, "priority")] // anything else: normal
+		row.Description, row.Location = splitLocation(field(rec, "description"))
+		if loc := field(rec, "location"); loc != "" {
+			row.Location = &loc
+		}
+		row.DueDate, row.Recurrence = importDate(field(rec, "date"), today)
+		rows = append(rows, row)
 	}
+	return rows, nil
+}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"success":        true,
-		"tasks_count":    tasksCount,
-		"sections_count": sectionsCount,
-	})
+// splitLocation extracts a "Location: ..." line from a description.
+func splitLocation(desc string) (string, *string) {
+	var kept []string
+	var location *string
+	for _, line := range strings.Split(desc, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > len(locationPrefix) && strings.EqualFold(trimmed[:len(locationPrefix)], locationPrefix) {
+			loc := strings.TrimSpace(trimmed[len(locationPrefix):])
+			location = &loc
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n")), location
+}
+
+// importDate reads a Todoist DATE cell such as "2026-11-01", "tomorrow 9am"
+// or "every monday starting 2026-11-02 at 09:00".
+func importDate(cell, today string) (due, recurrence *string) {
+	if cell == "" {
+		return nil, nil
+	}
+	rule, rest := parser.ExtractRecurrence(cell)
+	if rule != "" {
+		recurrence = &rule
+	}
+	if d, _ := parser.ExtractDueDate(rest, today); d != "" {
+		due = &d
+	}
+	// "every monday" alone: start on the next Monday.
+	if due == nil && strings.HasPrefix(rule, "weekly:") {
+		d := parser.NextDueDate("", rule, today)
+		due = &d
+	}
+	return due, recurrence
+}
+
+func detectDelimiter(data []byte) rune {
+	sample := data[:min(len(data), 2048)]
+	if end := bytes.IndexByte(sample, '\n'); end > 0 {
+		sample = sample[:end] // the header line is the most reliable
+	}
+	best, bestCount := ',', bytes.Count(sample, []byte{','})
+	for _, d := range []rune{';', '\t'} {
+		if n := bytes.Count(sample, []byte(string(d))); n > bestCount {
+			best, bestCount = d, n
+		}
+	}
+	return best
 }

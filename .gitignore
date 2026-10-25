@@ -12,3 +12,4 @@ data/
 .idea/
 .vscode/
 .DS_Store
+tests/e2e/out/

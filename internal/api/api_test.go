@@ -1,297 +1,267 @@
-package api_test
+package api
 
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/ben/get-done/internal/api"
 	"github.com/ben/get-done/internal/db"
 )
 
-func setupTestServer(t *testing.T) (*httptest.Server, *db.Store, func()) {
+type client struct {
+	t       *testing.T
+	handler http.Handler
+	cookie  *http.Cookie
+}
+
+func newClient(t *testing.T, noAuth bool) (*client, *db.Store) {
 	t.Helper()
-	tmpDir, err := os.MkdirTemp("", "get_done_api_test_*")
+	store, err := db.Open(filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+		t.Fatal(err)
 	}
-
-	dbPath := filepath.Join(tmpDir, "test.db")
-	store, err := db.NewStore(dbPath)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to create store: %v", err)
-	}
-
-	mux := http.NewServeMux()
-	a := api.NewAPI(store)
-	a.RegisterRoutes(mux)
-
-	srv := httptest.NewServer(mux)
-
-	cleanup := func() {
-		srv.Close()
-		store.Close()
-		os.RemoveAll(tmpDir)
-	}
-
-	return srv, store, cleanup
+	t.Cleanup(func() { store.Close() })
+	return &client{t: t, handler: New(store, noAuth).Handler()}, store
 }
 
-func TestAPIRoutes(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	// 1. Create a Project
-	projPayload := map[string]interface{}{
-		"name": "NixOS Setup",
-		"icon": "❄️",
+// do sends a request and decodes the JSON answer into out (when not nil).
+func (c *client) do(method, path string, body any, wantStatus int, out any) *httptest.ResponseRecorder {
+	c.t.Helper()
+	var reader io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		reader = bytes.NewReader(b)
 	}
-	body, _ := json.Marshal(projPayload)
-	resp, err := http.Post(srv.URL+"/api/projects", "application/json", bytes.NewReader(body))
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("Create project failed, status: %v", resp.StatusCode)
+	req := httptest.NewRequest(method, path, reader)
+	req.Header.Set("Content-Type", "application/json")
+	if c.cookie != nil {
+		req.AddCookie(c.cookie)
 	}
-	var createdProject db.Project
-	_ = json.NewDecoder(resp.Body).Decode(&createdProject)
-	resp.Body.Close()
-
-	if createdProject.ID == "" || createdProject.Name != "NixOS Setup" {
-		t.Errorf("Unexpected created project: %+v", createdProject)
+	rec := httptest.NewRecorder()
+	c.handler.ServeHTTP(rec, req)
+	if rec.Code != wantStatus {
+		c.t.Fatalf("%s %s = %d, want %d: %s", method, path, rec.Code, wantStatus, rec.Body.String())
 	}
-
-	// 2. Create a Task in this project
-	taskPayload := map[string]interface{}{
-		"project_id": createdProject.ID,
-		"title":      "Write Flake configuration",
-		"priority":   1,
-		"location":   "Home",
+	for _, ck := range rec.Result().Cookies() {
+		if ck.Name == sessionCookie {
+			c.cookie = ck
+			if ck.MaxAge < 0 {
+				c.cookie = nil
+			}
+		}
 	}
-	body, _ = json.Marshal(taskPayload)
-	resp, err = http.Post(srv.URL+"/api/tasks", "application/json", bytes.NewReader(body))
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("Create task failed, status: %v", resp.StatusCode)
+	if out != nil {
+		if err := json.Unmarshal(rec.Body.Bytes(), out); err != nil {
+			c.t.Fatalf("decode %s %s: %v", method, path, err)
+		}
 	}
-	var createdTask db.Task
-	_ = json.NewDecoder(resp.Body).Decode(&createdTask)
-	resp.Body.Close()
-
-	// 3. Complete the Task
-	resp, err = http.Post(srv.URL+"/api/tasks/"+createdTask.ID+"/complete", "application/json", nil)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Complete task failed, status: %v", resp.StatusCode)
-	}
-	var completeRes map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&completeRes)
-	resp.Body.Close()
-
-	if completeRes["deleted"] != true {
-		t.Errorf("Expected task to be deleted upon complete: %+v", completeRes)
-	}
-
-	// 4. Test QuickAdd Parse API
-	parsePayload := map[string]string{
-		"text": "Perform system update tomorrow 10am p2 #[NixOS Setup] @Office",
-	}
-	body, _ = json.Marshal(parsePayload)
-	resp, err = http.Post(srv.URL+"/api/parse", "application/json", bytes.NewReader(body))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Parse quick add failed, status: %v", resp.StatusCode)
-	}
-	var parseRes map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&parseRes)
-	resp.Body.Close()
-
-	if parseRes["title"] != "Perform system update #[NixOS Setup]" {
-		t.Errorf("Unexpected parsed title: %v", parseRes["title"])
-	}
-	if parseRes["project_name"] != nil {
-		t.Errorf("Expected nil project_name, got: %v", parseRes["project_name"])
-	}
-	if parseRes["project_id"] != nil {
-		t.Errorf("Expected nil project_id, got: %v", parseRes["project_id"])
-	}
-	if parseRes["priority"].(float64) != 2 {
-		t.Errorf("Unexpected priority: %v", parseRes["priority"])
-	}
+	return rec
 }
 
-func TestProjectSortAPI(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
-	defer cleanup()
+func TestTaskLifecycle(t *testing.T) {
+	c, _ := newClient(t, true)
 
-	client := &http.Client{}
-
-	// 1. Create a Project
-	projPayload, _ := json.Marshal(map[string]interface{}{
-		"name": "Backend Development",
-	})
-	resp, err := client.Post(srv.URL+"/api/projects", "application/json", bytes.NewReader(projPayload))
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("Create project failed: %v", err)
-	}
 	var proj db.Project
-	_ = json.NewDecoder(resp.Body).Decode(&proj)
-	resp.Body.Close()
+	c.do("POST", "/api/projects", map[string]any{"name": "Home"}, 201, &proj)
+	var sec db.Section
+	c.do("POST", "/api/sections", map[string]any{"project_id": proj.ID, "name": "Kitchen"}, 201, &sec)
 
-	// 2. PATCH sort on custom project
-	sortPayload, _ := json.Marshal(map[string]string{
-		"sort_by":    "date",
-		"sort_order": "desc",
-	})
-	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/api/projects/"+proj.ID+"/sort", bytes.NewReader(sortPayload))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("PATCH project sort failed, status: %v", resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// Verify via GET
-	resp, err = client.Get(srv.URL + "/api/projects/" + proj.ID)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET project failed, status: %v", resp.StatusCode)
-	}
-	var fetchedProj db.Project
-	_ = json.NewDecoder(resp.Body).Decode(&fetchedProj)
-	resp.Body.Close()
-
-	if fetchedProj.SortBy != "date" || fetchedProj.SortOrder != "desc" {
-		t.Errorf("Expected date/desc sort, got %s/%s", fetchedProj.SortBy, fetchedProj.SortOrder)
+	var parent, child db.Task
+	c.do("POST", "/api/tasks", map[string]any{"title": "Clean", "project_id": proj.ID, "section_id": sec.ID, "due_date": "2026-10-08"}, 201, &parent)
+	c.do("POST", "/api/tasks", map[string]any{"title": "Oven", "parent_id": parent.ID}, 201, &child)
+	if child.ProjectID != proj.ID {
+		t.Fatalf("subtask project = %s", child.ProjectID)
 	}
 
-	// 3. PATCH sort on inbox
-	inboxSortPayload, _ := json.Marshal(map[string]string{
-		"sort_by":    "priority",
-		"sort_order": "asc",
-	})
-	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/api/projects/inbox/sort", bytes.NewReader(inboxSortPayload))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("PATCH inbox sort failed, status: %v", resp.StatusCode)
+	// Validation errors are 400 with a readable message.
+	rec := c.do("POST", "/api/tasks", map[string]any{"title": "x", "due_date": "tomorrow"}, 400, nil)
+	if !strings.Contains(rec.Body.String(), "Invalid due date") {
+		t.Fatalf("unexpected error body: %s", rec.Body.String())
 	}
-	resp.Body.Close()
+	c.do("POST", "/api/tasks", "not an object", 400, nil)
+	c.do("GET", "/api/tasks/missing", nil, 404, nil)
 
-	// Verify inbox via GET
-	resp, err = client.Get(srv.URL + "/api/projects/inbox")
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET inbox failed, status: %v", resp.StatusCode)
+	// Patch keeps absent fields and clears null ones.
+	var patched db.Task
+	c.do("PATCH", "/api/tasks/"+parent.ID, map[string]any{"priority": 1, "location": "Home"}, 200, &patched)
+	if patched.Priority != 1 || *patched.Location != "Home" || *patched.DueDate != "2026-10-08" {
+		t.Fatalf("patch result: %+v", patched)
 	}
-	var fetchedInbox db.Project
-	_ = json.NewDecoder(resp.Body).Decode(&fetchedInbox)
-	resp.Body.Close()
+	c.do("PATCH", "/api/tasks/"+parent.ID, map[string]any{"location": nil}, 200, &patched)
+	if patched.Location != nil {
+		t.Fatal("location not cleared")
+	}
 
-	if fetchedInbox.SortBy != "priority" || fetchedInbox.SortOrder != "asc" {
-		t.Errorf("Expected priority/asc sort on inbox, got %s/%s", fetchedInbox.SortBy, fetchedInbox.SortOrder)
+	// Lists, counts and search.
+	var list []*db.Task
+	c.do("GET", "/api/tasks?view=project&project_id="+proj.ID, nil, 200, &list)
+	if len(list) != 1 || len(list[0].Subtasks) != 1 {
+		t.Fatalf("project tree: %+v", list)
 	}
+	c.do("GET", "/api/tasks?view=upcoming&today=2026-10-07", nil, 200, &list)
+	if len(list) != 1 {
+		t.Fatalf("upcoming: %d tasks", len(list))
+	}
+	var counts db.Counts
+	c.do("GET", "/api/counts?today=2026-10-08", nil, 200, &counts)
+	if counts.Upcoming != 1 || counts.Projects[proj.ID] != "today" {
+		t.Fatalf("counts: %+v", counts)
+	}
+	c.do("GET", "/api/search?q=oven", nil, 200, &list)
+	if len(list) != 1 || list[0].ProjectName != "Home" {
+		t.Fatalf("search: %+v", list)
+	}
+
+	// Move the subtask out to the root of the inbox.
+	var moved db.Task
+	c.do("POST", "/api/tasks/"+child.ID+"/move", map[string]any{"project_id": "inbox"}, 200, &moved)
+	if moved.ParentID != nil || moved.ProjectID != "inbox" {
+		t.Fatalf("move: %+v", moved)
+	}
+
+	// Complete, then undo.
+	var done db.Completion
+	c.do("POST", "/api/tasks/"+parent.ID+"/complete", map[string]any{"today": "2026-10-07"}, 200, &done)
+	if !done.Deleted {
+		t.Fatal("one-off task must be deleted on completion")
+	}
+	c.do("GET", "/api/tasks/"+parent.ID, nil, 404, nil)
+	c.do("POST", "/api/tasks/restore", map[string]any{"tasks": []*db.Task{done.Task}}, 200, nil)
+	c.do("GET", "/api/tasks/"+parent.ID, nil, 200, nil)
+
+	// Sort is validated and persisted, also for the inbox.
+	c.do("PUT", "/api/projects/inbox/sort", map[string]any{"sort_by": "title"}, 200, nil)
+	c.do("PUT", "/api/projects/inbox/sort", map[string]any{"sort_by": "chaos"}, 400, nil)
+	var inbox db.Project
+	c.do("GET", "/api/projects/inbox", nil, 200, &inbox)
+	if inbox.SortBy != "title" {
+		t.Fatalf("inbox sort = %q", inbox.SortBy)
+	}
+
+	c.do("DELETE", "/api/projects/inbox", nil, 400, nil)
+	c.do("DELETE", "/api/projects/"+proj.ID, nil, 200, nil)
+	c.do("GET", "/api/nothing", nil, 404, nil)
 }
 
 func TestAuthFlow(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
-	defer cleanup()
+	c, _ := newClient(t, false)
+	var status map[string]bool
+	c.do("GET", "/api/auth/status", nil, 200, &status)
+	if status["has_password"] || status["authenticated"] {
+		t.Fatalf("fresh status: %v", status)
+	}
+	// Before setup, the instance is open.
+	c.do("GET", "/api/projects", nil, 200, nil)
 
-	client := &http.Client{}
+	c.do("POST", "/api/auth/setup", map[string]any{"password": "ab"}, 400, nil)
+	c.do("POST", "/api/auth/setup", map[string]any{"password": "correct horse"}, 200, nil)
+	c.do("POST", "/api/auth/setup", map[string]any{"password": "hijack"}, 400, nil)
+	c.do("GET", "/api/projects", nil, 200, nil)
 
-	// 1. Initial status -> has_password: false, authenticated: false
-	resp, err := client.Get(srv.URL + "/api/auth/status")
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Failed to get auth status: %v", err)
+	c.do("POST", "/api/auth/logout", nil, 200, nil)
+	rec := c.do("GET", "/api/projects", nil, 401, nil)
+	if !strings.Contains(rec.Body.String(), "auth_required") {
+		t.Fatal("401 must say auth_required")
 	}
-	var status map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&status)
-	resp.Body.Close()
-	if status["has_password"] != false || status["authenticated"] != false {
-		t.Errorf("Unexpected initial status: %+v", status)
+	c.do("POST", "/api/auth/login", map[string]any{"password": "wrong"}, 401, nil)
+	c.do("POST", "/api/auth/login", map[string]any{"password": "correct horse"}, 200, nil)
+	c.do("POST", "/api/auth/change-password", map[string]any{"old_password": "nope", "new_password": "battery staple"}, 401, nil)
+	c.do("POST", "/api/auth/change-password", map[string]any{"old_password": "correct horse", "new_password": "battery staple"}, 200, nil)
+	c.do("GET", "/api/projects", nil, 200, nil) // still signed in after the change
+}
+
+func TestCrossSiteRequestsAreRefused(t *testing.T) {
+	c, _ := newClient(t, true)
+	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(`{"title":"evil"}`))
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	rec := httptest.NewRecorder()
+	c.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-site POST = %d, want 403", rec.Code)
+	}
+}
+
+func TestCSVRoundTrip(t *testing.T) {
+	c, store := newClient(t, true)
+	var src db.Project
+	c.do("POST", "/api/projects", map[string]any{"name": "Vacances d'été"}, 201, &src)
+	var sec db.Section
+	c.do("POST", "/api/sections", map[string]any{"project_id": src.ID, "name": "Preparations"}, 201, &sec)
+	var root, sub db.Task
+	c.do("POST", "/api/tasks", map[string]any{"title": "Buy tickets", "project_id": src.ID, "priority": 1,
+		"due_date": "2026-11-05", "location": "Central Station, London", "description": "Window seat"}, 201, &root)
+	c.do("POST", "/api/tasks", map[string]any{"title": "Compare prices", "parent_id": root.ID, "priority": 2}, 201, &sub)
+	c.do("POST", "/api/tasks", map[string]any{"title": "Railcard", "parent_id": sub.ID}, 201, nil)
+	c.do("POST", "/api/tasks", map[string]any{"title": "Water plants", "project_id": src.ID, "section_id": sec.ID,
+		"due_date": "2026-11-01 08:30", "recurrence": "weekly:sunday"}, 201, nil)
+
+	rec := c.do("GET", "/api/projects/"+src.ID+"/export", nil, 200, nil)
+	exported := rec.Body.Bytes()
+	if !strings.Contains(rec.Header().Get("Content-Disposition"), "filename*=UTF-8''Vacances") {
+		t.Fatalf("Content-Disposition: %s", rec.Header().Get("Content-Disposition"))
 	}
 
-	// 2. Setup master password
-	setupPayload, _ := json.Marshal(map[string]string{"password": "secret_master_password"})
-	resp, err = client.Post(srv.URL+"/api/auth/setup", "application/json", bytes.NewReader(setupPayload))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Setup password failed: %v", err)
-	}
-	// Extract session cookie
-	var sessionCookie *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == "todo_session" {
-			sessionCookie = c
-			break
-		}
-	}
-	resp.Body.Close()
-	if sessionCookie == nil || sessionCookie.Value == "" {
-		t.Fatalf("Expected todo_session cookie after setup")
+	var dst db.Project
+	c.do("POST", "/api/projects", map[string]any{"name": "Copy"}, 201, &dst)
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	part, _ := mw.CreateFormFile("file", "export.csv")
+	part.Write(exported)
+	mw.Close()
+	req := httptest.NewRequest("POST", "/api/projects/"+dst.ID+"/import?today=2026-10-07", body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	out := httptest.NewRecorder()
+	c.handler.ServeHTTP(out, req)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"tasks_count":4`) {
+		t.Fatalf("import = %d %s", out.Code, out.Body.String())
 	}
 
-	// 3. Status with cookie -> authenticated: true
-	req, _ := http.NewRequest("GET", srv.URL+"/api/auth/status", nil)
-	req.AddCookie(sessionCookie)
-	resp, err = client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Status with cookie failed: %v", err)
+	tasks, _ := store.ListTasks(db.TaskFilter{View: "project", ProjectID: dst.ID})
+	if len(tasks) != 2 {
+		t.Fatalf("imported roots = %d", len(tasks))
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&status)
-	resp.Body.Close()
-	if status["has_password"] != true || status["authenticated"] != true {
-		t.Errorf("Expected authenticated status, got: %+v", status)
+	imported := tasks[0]
+	if imported.Title != "Buy tickets" || imported.Priority != 1 || *imported.DueDate != "2026-11-05" ||
+		*imported.Location != "Central Station, London" || imported.Description != "Window seat" {
+		t.Fatalf("imported root: %+v", imported)
 	}
+	if imported.Subtasks[0].Title != "Compare prices" || imported.Subtasks[0].Subtasks[0].Title != "Railcard" {
+		t.Fatal("hierarchy lost")
+	}
+	recurring := tasks[1]
+	if recurring.SectionID == nil || *recurring.Recurrence != "weekly:sunday" || *recurring.DueDate != "2026-11-01 08:30" {
+		t.Fatalf("recurring task: %+v", recurring)
+	}
+}
 
-	// 4. Request without cookie to protected route -> 401 Unauthorized
-	resp, err = client.Get(srv.URL + "/api/projects")
-	if err != nil || resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("Expected 401 without cookie, got: %v", resp.StatusCode)
+func TestCSVImportSemicolonAndBOM(t *testing.T) {
+	c, store := newClient(t, true)
+	var proj db.Project
+	c.do("POST", "/api/projects", map[string]any{"name": "Excel"}, 201, &proj)
+	data := "\xef\xbb\xbfTYPE;CONTENT;DESCRIPTION;PRIORITY;INDENT;AUTHOR;RESPONSIBLE;DATE;DATE_LANG;TIMEZONE\n" +
+		"section;Section A;;;;;;;;\n" +
+		"task;Task 1;Description 1;1;1;;;tomorrow;en;\n" +
+		"task;Subtask 1.1;Location: 10 Downing Street, London;2;2;;;;;\n" +
+		"note;A note for 1.1;;;;;;;;\n"
+	req := httptest.NewRequest("POST", "/api/projects/"+proj.ID+"/import?today=2026-10-07", strings.NewReader(data))
+	req.Header.Set("Content-Type", "text/csv")
+	rec := httptest.NewRecorder()
+	c.handler.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("import = %d %s", rec.Code, rec.Body.String())
 	}
-	resp.Body.Close()
-
-	// 5. Request with cookie to protected route -> 200 OK
-	req, _ = http.NewRequest("GET", srv.URL+"/api/projects", nil)
-	req.AddCookie(sessionCookie)
-	resp, err = client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Expected 200 with cookie, got: %v", resp.StatusCode)
+	tasks, _ := store.ListTasks(db.TaskFilter{View: "project", ProjectID: proj.ID})
+	if len(tasks) != 1 || *tasks[0].DueDate != "2026-10-08" {
+		t.Fatalf("tasks: %+v", tasks)
 	}
-	resp.Body.Close()
-
-	// 6. Test login with wrong password -> 401
-	badLogin, _ := json.Marshal(map[string]string{"password": "wrong"})
-	resp, err = client.Post(srv.URL+"/api/auth/login", "application/json", bytes.NewReader(badLogin))
-	if err != nil || resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("Expected 401 for wrong password, got: %v", resp.StatusCode)
+	sub := tasks[0].Subtasks[0]
+	if *sub.Location != "10 Downing Street, London" || sub.Description != "A note for 1.1" {
+		t.Fatalf("subtask: %+v", sub)
 	}
-	resp.Body.Close()
-
-	// 7. Test login with correct password -> 200 + new cookie
-	goodLogin, _ := json.Marshal(map[string]string{"password": "secret_master_password"})
-	resp, err = client.Post(srv.URL+"/api/auth/login", "application/json", bytes.NewReader(goodLogin))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Expected 200 for good password, got: %v", resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// 8. Test change password
-	changePayload, _ := json.Marshal(map[string]string{
-		"old_password": "secret_master_password",
-		"new_password": "new_super_secret",
-	})
-	req, _ = http.NewRequest("POST", srv.URL+"/api/auth/change-password", bytes.NewReader(changePayload))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(sessionCookie)
-	resp, err = client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Change password failed: %v", err)
-	}
-	resp.Body.Close()
-
-	// 9. Login with new password succeeds
-	newLogin, _ := json.Marshal(map[string]string{"password": "new_super_secret"})
-	resp, err = client.Post(srv.URL+"/api/auth/login", "application/json", bytes.NewReader(newLogin))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("Login with new password failed: %v", err)
-	}
-	resp.Body.Close()
 }

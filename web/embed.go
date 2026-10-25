@@ -1,8 +1,9 @@
+// Package web embeds the browser application.
 package web
 
 import "embed"
 
-// Files contains all embedded static assets for the web frontend.
+// Files holds the static assets served at the site root.
 //
-//go:embed *
+//go:embed index.html manifest.json css js icons
 var Files embed.FS

@@ -1,379 +1,209 @@
-// Client-side instant tokenizer and preview for quick add & task detail title
-// Fully bilingual (English & French) matching internal/parser/quickadd.go
+// Quick add parser: reads priority, recurrence, due date/time and location
+// out of a task title, in English or French. It follows the same rules as
+// internal/parser on the server (used for CSV imports).
+//
+//   "Dentist tomorrow 14h30 p2 @Rue de la Paix"
+//   -> title "Dentist", due "YYYY-MM-DD 14:30", priority 2, location "Rue de la Paix"
 
-const MONTH_NAMES = {
-  january: 1, jan: 1, janvier: 1, janv: 1,
-  february: 2, feb: 2, février: 2, fevrier: 2, févr: 2, fevr: 2, fév: 2, fev: 2,
-  march: 3, mar: 3, mars: 3,
-  april: 4, apr: 4, avril: 4, avr: 4,
+import { addDays, isoDate, nextWeekday, pad2, parseISO, recurrenceLabel, formatDue, todayISO, joinDue, splitDue } from './dates.js';
+
+const MONTH_PATTERN = 'january|janvier|janv|jan|february|f[eé]vrier|f[eé]vr|f[eé]v|feb|march|mars|mar|april|avril|avr|apr|may|mai|june|juin|jun|july|juillet|juil|jul|august|ao[uû]t|aug|september|septembre|sept|sep|october|octobre|oct|november|novembre|nov|december|d[eé]cembre|d[eé]c|dec';
+
+const MONTH_NUMBERS = {
+  january: 1, janvier: 1, janv: 1, jan: 1,
+  february: 2, fevrier: 2, fevr: 2, fev: 2, feb: 2,
+  march: 3, mars: 3, mar: 3,
+  april: 4, avril: 4, avr: 4, apr: 4,
   may: 5, mai: 5,
-  june: 6, jun: 6, juin: 6, jui: 6,
-  july: 7, jul: 7, juillet: 7, juil: 7,
-  august: 8, aug: 8, août: 8, aout: 8, aoû: 8, aou: 8,
-  september: 9, sep: 9, sept: 9, septembre: 9,
-  october: 10, oct: 10, octobre: 10,
-  november: 11, nov: 11, novembre: 11,
-  december: 12, dec: 12, décembre: 12, decembre: 12, déc: 12,
+  june: 6, juin: 6, jun: 6,
+  july: 7, juillet: 7, juil: 7, jul: 7,
+  august: 8, aout: 8, aug: 8,
+  september: 9, septembre: 9, sept: 9, sep: 9,
+  october: 10, octobre: 10, oct: 10,
+  november: 11, novembre: 11, nov: 11,
+  december: 12, decembre: 12, dec: 12,
 };
 
-const MONTH_PATTERN = 'january|janvier|janv|jan|february|f[eé]vrier|f[eé]vr|f[eé]v|feb|march|mars|mar|april|avril|avr|apr|may|mai|june|juin|jui|jun|july|juillet|juil|jul|august|ao[uû]t|ao[uû]|aug|september|septembre|sept|sep|october|octobre|oct|november|novembre|nov|december|d[eé]cembre|d[eé]c|dec';
+const PRIORITY_RE = /(?:^|\s)(?:p|!)([1-3])(?=\s|$)/i;
+const TIME_RE = /\b(\d{1,2})(?:(?::(\d{2}))?\s*(am|pm)|h(\d{2})?|:(\d{2}))\b/i;
+const ISO_RE = /\b(\d{4})-(\d{2})-(\d{2})\b/;
+const DAY_MONTH_RE = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th|er)?\\s+(${MONTH_PATTERN})\\.?(?:\\s+(\\d{4}))?\\b`, 'i');
+const MONTH_DAY_RE = new RegExp(`\\b(${MONTH_PATTERN})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th|er)?(?:,?\\s+(\\d{4}))?\\b`, 'i');
+const NUMERIC_RE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/;
+const CRON_RE = /\bcron:(\S+(?:\s+\S+){4})/i;
 
-const WEEKDAYS = {
-  sunday: 0, dimanche: 0, sun: 0,
-  monday: 1, lundi: 1, mon: 1,
-  tuesday: 2, mardi: 2, tue: 2,
-  wednesday: 3, mercredi: 3, wed: 3,
-  thursday: 4, jeudi: 4, thu: 4,
-  friday: 5, vendredi: 5, fri: 5,
-  saturday: 6, samedi: 6, sat: 6,
-};
+const RECURRENCES = [
+  [/\b(?:tous les jours ouvrés|jours ouvrés|every weekday|weekdays)\b/i, 'weekdays'],
+  [/\b(?:tous les jours|chaque jour|every day|daily)\b/i, 'daily'],
+  [/\b(?:toutes les semaines|chaque semaine|every week|weekly)\b/i, 'weekly'],
+  [/\b(?:tous les mois|chaque mois|every month|monthly)\b/i, 'monthly'],
+  [/\b(?:tous les ans|chaque année|chaque annee|every year|yearly)\b/i, 'yearly'],
+  [/\b(?:tous les lundis|chaque lundi|every monday)\b/i, 'weekly:monday'],
+  [/\b(?:tous les mardis|chaque mardi|every tuesday)\b/i, 'weekly:tuesday'],
+  [/\b(?:tous les mercredis|chaque mercredi|every wednesday)\b/i, 'weekly:wednesday'],
+  [/\b(?:tous les jeudis|chaque jeudi|every thursday)\b/i, 'weekly:thursday'],
+  [/\b(?:tous les vendredis|chaque vendredi|every friday)\b/i, 'weekly:friday'],
+  [/\b(?:tous les samedis|chaque samedi|every saturday)\b/i, 'weekly:saturday'],
+  [/\b(?:tous les dimanches|chaque dimanche|every sunday)\b/i, 'weekly:sunday'],
+];
 
-function normalizeMonth(m) {
-  const clean = m.toLowerCase().replace(/é/g, 'e').replace(/û/g, 'u').trim();
-  return MONTH_NAMES[clean] || MONTH_NAMES[m.toLowerCase().trim()] || 0;
+const RELATIVE_DAYS = [
+  [/\b(?:après-demain|apres-demain|day after tomorrow)\b/i, 2],
+  [/\b(?:aujourd'hui|aujourdhui|today|ajd)\b/i, 0],
+  [/\b(?:demain|tomorrow)\b/i, 1],
+  [/\b(?:hier|yesterday)\b/i, -1],
+];
+
+// "mon" is left out on purpose: in French it means "my".
+const WEEKDAY_WORDS = [
+  [/\b(?:ce week-end|ce weekend|this weekend|weekend)\b/i, 6],
+  [/\b(?:lundi|monday)\b/i, 1],
+  [/\b(?:mardi|tuesday|tue)\b/i, 2],
+  [/\b(?:mercredi|wednesday|wed)\b/i, 3],
+  [/\b(?:jeudi|thursday|thu)\b/i, 4],
+  [/\b(?:vendredi|friday|fri)\b/i, 5],
+  [/\b(?:samedi|saturday|sat)\b/i, 6],
+  [/\b(?:dimanche|sunday|sun)\b/i, 0],
+];
+
+const WEEKDAY_NUMBERS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+
+function monthNumber(name) {
+  return MONTH_NUMBERS[name.toLowerCase().replace(/é/g, 'e').replace(/û/g, 'u')] || 0;
 }
 
-function pad2(n) {
-  return String(n).padStart(2, '0');
+/** "YYYY-MM-DD" for a valid calendar date, else null. */
+function makeDate(year, month, day) {
+  const d = new Date(year, month - 1, day);
+  return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day ? isoDate(d) : null;
 }
 
-function nextWeekdayDate(now, targetDay) {
-  const curDay = now.getDay();
-  let diff = targetDay - curDay;
-  if (diff <= 0) diff += 7;
-  const d = new Date(now);
-  d.setDate(now.getDate() + diff);
-  return d;
+/** Day + month (+ optional year); without year, a past date means next year. */
+function calendarDate(day, month, yearStr, today) {
+  let year = parseISO(today).getFullYear();
+  if (yearStr) {
+    year = Number(yearStr);
+    if (year < 100) year += 2000;
+  }
+  let iso = makeDate(year, month, Number(day));
+  if (iso && !yearStr && iso < today) iso = makeDate(year + 1, month, Number(day)) || iso;
+  return iso;
 }
 
-export function parseQuickTokens(text, now = new Date(), ignoredTokens = null) {
-  const result = {
-    title: text,
-    cleanTitle: text,
-    project: null,
-    priority: null,
-    dueDate: null,
-    dueDateLabel: null,
-    recurrence: null,
-    recurrenceLabel: null,
-    location: null,
-    tokens: [],
-  };
+function parseClock(m) {
+  let hour = Number(m[1]);
+  const minute = Number(m[2] || m[4] || m[5] || 0);
+  const ampm = (m[3] || '').toLowerCase();
+  if (ampm === 'pm' && hour < 12) hour += 12;
+  if (ampm === 'am' && hour === 12) hour = 0;
+  return hour <= 23 && minute <= 59 ? `${pad2(hour)}:${pad2(minute)}` : null;
+}
 
-  if (!text || typeof text !== 'string') return result;
+/** Removes a regex match from the string it was found in. */
+function cut(work, match) {
+  return `${work.slice(0, match.index)} ${work.slice(match.index + match[0].length)}`;
+}
 
-  const isIgnored = (type) => {
-    if (!ignoredTokens) return false;
-    if (typeof ignoredTokens.has === 'function') return ignoredTokens.has(type);
-    if (Array.isArray(ignoredTokens)) return ignoredTokens.includes(type);
-    return false;
-  };
-
+/** Finds a date and/or time in text: { due, rest } or null. */
+function findDue(text, today) {
   let work = text;
-
-  // 1. Priority (p1..p3 or !1..!3)
-  const pMatch = work.match(/(?:^|\s)(?:p|!)([1-3])(?:\s|$)/i);
-  if (pMatch) {
-    const prio = parseInt(pMatch[1], 10);
-    if (!isIgnored('priority')) {
-      result.priority = prio;
-      result.tokens.push({
-        type: 'priority',
-        text: pMatch[0].trim(),
-        value: prio,
-        label: `P${prio}`,
-      });
-      work = work.replace(pMatch[0], ' ');
+  let time = '';
+  const tm = TIME_RE.exec(work);
+  if (tm) {
+    const clock = parseClock(tm);
+    if (clock) {
+      time = clock;
+      work = cut(work, tm);
     }
   }
 
-  // 2. Recurrence
-  const recurrPatterns = [
-    { re: /\bcron:([^\s]+(?:\s+[^\s]+){4})\b/i, rule: (m) => `cron:${m[1].trim()}`, label: (m) => `Cron: ${m[1].trim()}` },
-    { re: /\b(?:tous les jours ouvrés|jours ouvrés|every weekday|weekdays)\b/i, rule: () => 'weekdays', label: () => 'Weekdays' },
-    { re: /\b(?:tous les jours|chaque jour|every day|daily)\b/i, rule: () => 'daily', label: () => 'Daily' },
-    { re: /\b(?:toutes les semaines|chaque semaine|every week|weekly)\b/i, rule: () => 'weekly', label: () => 'Weekly' },
-    { re: /\b(?:tous les mois|chaque mois|every month|monthly)\b/i, rule: () => 'monthly', label: () => 'Monthly' },
-    { re: /\b(?:tous les ans|chaque annee|every year|yearly)\b/i, rule: () => 'yearly', label: () => 'Yearly' },
-    { re: /\b(?:tous les lundis|chaque lundi|every monday)\b/i, rule: () => 'weekly:monday', label: () => 'Every Monday' },
-    { re: /\b(?:tous les mardis|chaque mardi|every tuesday)\b/i, rule: () => 'weekly:tuesday', label: () => 'Every Tuesday' },
-    { re: /\b(?:tous les mercredis|chaque mercredi|every wednesday)\b/i, rule: () => 'weekly:wednesday', label: () => 'Every Wednesday' },
-    { re: /\b(?:tous les jeudis|chaque jeudi|every thursday)\b/i, rule: () => 'weekly:thursday', label: () => 'Every Thursday' },
-    { re: /\b(?:tous les vendredis|chaque vendredi|every friday)\b/i, rule: () => 'weekly:friday', label: () => 'Every Friday' },
-    { re: /\b(?:tous les samedis|chaque samedi|every saturday)\b/i, rule: () => 'weekly:saturday', label: () => 'Every Saturday' },
-    { re: /\b(?:tous les dimanches|chaque dimanche|every sunday)\b/i, rule: () => 'weekly:sunday', label: () => 'Every Sunday' },
-  ];
-
-  for (const p of recurrPatterns) {
-    const m = work.match(p.re);
-    if (m) {
-      if (!isIgnored('recurr') && !isIgnored('recurrence')) {
-        result.recurrence = p.rule(m);
-        result.recurrenceLabel = p.label(m);
-        result.tokens.push({
-          type: 'recurr',
-          text: m[0],
-          value: result.recurrence,
-          label: `↻ ${result.recurrenceLabel}`,
-        });
-        work = work.replace(m[0], ' ');
-      }
-      break;
+  let date = null;
+  const tryMatch = (re, build) => {
+    if (date) return;
+    const m = re.exec(work);
+    if (!m) return;
+    const iso = build(m);
+    if (iso) {
+      date = iso;
+      work = cut(work, m);
     }
-  }
+  };
+  tryMatch(ISO_RE, (m) => makeDate(Number(m[1]), Number(m[2]), Number(m[3])));
+  tryMatch(DAY_MONTH_RE, (m) => calendarDate(m[1], monthNumber(m[2]), m[3], today));
+  tryMatch(MONTH_DAY_RE, (m) => calendarDate(m[2], monthNumber(m[1]), m[3], today));
+  tryMatch(NUMERIC_RE, (m) => calendarDate(m[1], Number(m[2]), m[3], today));
+  for (const [re, offset] of RELATIVE_DAYS) tryMatch(re, () => addDays(today, offset));
+  for (const [re, weekday] of WEEKDAY_WORDS) tryMatch(re, () => nextWeekday(today, weekday));
 
-  // 4. Location (@"...", @'...' or @location)
-  const quotedLocMatch = work.match(/@(["'])(.*?)\1/);
-  if (quotedLocMatch) {
-    if (!isIgnored('location')) {
-      result.location = quotedLocMatch[2].trim();
-      result.tokens.push({
-        type: 'location',
-        text: quotedLocMatch[0],
-        value: result.location,
-        label: `📍 ${result.location}`,
-      });
-      work = work.replace(quotedLocMatch[0], ' ');
-    }
-  } else {
-    const locMatch = work.match(/@([a-zA-Z0-9_\-'.]+(?:\s+[a-zA-Z0-9_\-'.]+)*)/i);
-    if (locMatch) {
-      // Don't swallow following #project or priority
-      const words = locMatch[1].trim().split(/\s+/);
-      const locWords = [];
-      for (const w of words) {
-        if (w.startsWith('#') || /^p[1-4]$/i.test(w) || /^![1-4]$/.test(w)) break;
-        locWords.push(w);
-      }
-      if (locWords.length > 0) {
-        if (!isIgnored('location')) {
-          result.location = locWords.join(' ');
-          result.tokens.push({
-            type: 'location',
-            text: '@' + result.location,
-            value: result.location,
-            label: `📍 ${result.location}`,
-          });
-          work = work.replace('@' + result.location, ' ');
-        }
-      }
-    }
-  }
-
-  // 5. Date & Time
-  if (!isIgnored('date')) {
-    let timeStr = '';
-    let timeLabel = '';
-    const timeRegex = /\b(\d{1,2})(?:(?::(\d{2}))?\s*(am|pm)|h(\d{2})?|:(\d{2}))\b/i;
-    const tMatch = work.match(timeRegex);
-    if (tMatch) {
-      let hour = parseInt(tMatch[1], 10);
-      let minute = 0;
-      const ampm = tMatch[3] ? tMatch[3].toLowerCase() : '';
-      if (tMatch[2]) minute = parseInt(tMatch[2], 10);
-      else if (tMatch[4]) minute = parseInt(tMatch[4], 10);
-      else if (tMatch[5]) minute = parseInt(tMatch[5], 10);
-
-      if (ampm === 'pm' && hour < 12) hour += 12;
-      else if (ampm === 'am' && hour === 12) hour = 0;
-
-      if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-        timeStr = ` ${pad2(hour)}:${pad2(minute)}`;
-        timeLabel = ` ${pad2(hour)}:${pad2(minute)}`;
-        work = work.replace(tMatch[0], ' ');
-      }
-    }
-
-    let targetDate = null;
-    let dateTokenText = '';
-    let dateLabel = '';
-
-    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    // Relative keywords
-    const relKeywords = [
-      { re: /\b(?:aujourd'hui|aujourdhui|today|ajd)\b/i, offset: 0, label: 'Today' },
-      { re: /\b(?:demain|tomorrow)\b/i, offset: 1, label: 'Tomorrow' },
-      { re: /\b(?:après-demain|apres-demain|day after tomorrow)\b/i, offset: 2, label: 'Day after tomorrow' },
-      { re: /\b(?:ce week-end|ce weekend|this weekend|weekend)\b/i, weekday: 6, label: 'This weekend' },
-      { re: /\b(?:hier|yesterday)\b/i, offset: -1, label: 'Yesterday' },
-      { re: /\b(?:lundi|monday|mon)\b/i, weekday: 1, label: 'Monday' },
-      { re: /\b(?:mardi|tuesday|tue)\b/i, weekday: 2, label: 'Tuesday' },
-      { re: /\b(?:mercredi|wednesday|wed)\b/i, weekday: 3, label: 'Wednesday' },
-      { re: /\b(?:jeudi|thursday|thu)\b/i, weekday: 4, label: 'Thursday' },
-      { re: /\b(?:vendredi|friday|fri)\b/i, weekday: 5, label: 'Friday' },
-      { re: /\b(?:samedi|saturday|sat)\b/i, weekday: 6, label: 'Saturday' },
-      { re: /\b(?:dimanche|sunday|sun)\b/i, weekday: 0, label: 'Sunday' },
-    ];
-
-    for (const kw of relKeywords) {
-      const m = work.match(kw.re);
-      if (m) {
-        dateTokenText = m[0];
-        dateLabel = kw.label;
-        if (kw.weekday !== undefined) {
-          targetDate = nextWeekdayDate(now, kw.weekday);
-        } else {
-          targetDate = new Date(todayZero);
-          targetDate.setDate(todayZero.getDate() + kw.offset);
-        }
-        work = work.replace(m[0], ' ');
-        break;
-      }
-    }
-
-    // Day Month (e.g. 23 october, 23 oct, 15 décembre, 12 nov, 1er mai)
-    if (!targetDate) {
-      const dayMonthRegex = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th|er)?\\s+(${MONTH_PATTERN})(?:\\s+(\\d{2,4}))?\\b`, 'i');
-      const m = work.match(dayMonthRegex);
-      if (m) {
-        const day = parseInt(m[1], 10);
-        const month = normalizeMonth(m[2]);
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          dateTokenText = m[0];
-          let year = now.getFullYear();
-          let hasYear = false;
-          if (m[3]) {
-            const y = parseInt(m[3], 10);
-            year = y < 100 ? 2000 + y : y;
-            hasYear = true;
-          }
-          targetDate = new Date(year, month - 1, day);
-          if (!hasYear && targetDate < todayZero) {
-            targetDate.setFullYear(year + 1);
-          }
-          dateLabel = targetDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-          work = work.replace(m[0], ' ');
-        }
-      }
-    }
-
-    // Month Day (e.g. october 23, oct 23, nov 12, décembre 15)
-    if (!targetDate) {
-      const monthDayRegex = new RegExp(`\\b(${MONTH_PATTERN})\\s+(\\d{1,2})(?:st|nd|rd|th|er)?(?:\\s+(\\d{2,4}))?\\b`, 'i');
-      const m = work.match(monthDayRegex);
-      if (m) {
-        const month = normalizeMonth(m[1]);
-        const day = parseInt(m[2], 10);
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          dateTokenText = m[0];
-          let year = now.getFullYear();
-          let hasYear = false;
-          if (m[3]) {
-            const y = parseInt(m[3], 10);
-            year = y < 100 ? 2000 + y : y;
-            hasYear = true;
-          }
-          targetDate = new Date(year, month - 1, day);
-          if (!hasYear && targetDate < todayZero) {
-            targetDate.setFullYear(year + 1);
-          }
-          dateLabel = targetDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-          work = work.replace(m[0], ' ');
-        }
-      }
-    }
-
-    // Explicit date DD/MM or DD/MM/YYYY
-    if (!targetDate) {
-      const expRegex = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/;
-      const m = work.match(expRegex);
-      if (m) {
-        const day = parseInt(m[1], 10);
-        const month = parseInt(m[2], 10);
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          dateTokenText = m[0];
-          let year = now.getFullYear();
-          let hasYear = false;
-          if (m[3]) {
-            const y = parseInt(m[3], 10);
-            year = y < 100 ? 2000 + y : y;
-            hasYear = true;
-          }
-          targetDate = new Date(year, month - 1, day);
-          if (!hasYear && targetDate < todayZero) {
-            targetDate.setFullYear(year + 1);
-          }
-          dateLabel = `${day} ${targetDate.toLocaleDateString('en-US', { month: 'short' })}`;
-          work = work.replace(m[0], ' ');
-        }
-      }
-    }
-
-    // ISO date YYYY-MM-DD
-    if (!targetDate) {
-      const isoRegex = /\b(\d{4})-(\d{2})-(\d{2})\b/;
-      const m = work.match(isoRegex);
-      if (m) {
-        dateTokenText = m[0];
-        targetDate = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-        dateLabel = targetDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-        work = work.replace(m[0], ' ');
-      }
-    }
-
-    if (targetDate) {
-      const yStr = targetDate.getFullYear();
-      const mStr = pad2(targetDate.getMonth() + 1);
-      const dStr = pad2(targetDate.getDate());
-      result.dueDate = `${yStr}-${mStr}-${dStr}${timeStr}`;
-      result.dueDateLabel = `${dateLabel}${timeLabel}`;
-      result.tokens.push({
-        type: 'date',
-        text: (dateTokenText + (tMatch ? ' ' + tMatch[0] : '')).trim(),
-        value: result.dueDate,
-        label: result.dueDateLabel,
-      });
-    } else if (timeStr) {
-      // Time alone implies today
-      const yStr = now.getFullYear();
-      const mStr = pad2(now.getMonth() + 1);
-      const dStr = pad2(now.getDate());
-      result.dueDate = `${yStr}-${mStr}-${dStr}${timeStr}`;
-      result.dueDateLabel = `Today${timeLabel}`;
-      result.tokens.push({
-        type: 'date',
-        text: tMatch[0],
-        value: result.dueDate,
-        label: result.dueDateLabel,
-      });
-    }
-  }
-
-  result.cleanTitle = work.trim().replace(/\s+/g, ' ');
-  return result;
+  if (!date && !time) return null;
+  return { due: joinDue(date || today, time), rest: work };
 }
 
-export function renderPreviewBadges(parsed, container, onDismiss = null) {
-  if (!container) return;
-  container.innerHTML = '';
+/**
+ * Parses a quick add title. Token types listed in `ignored` (a Set of
+ * 'priority' | 'recurrence' | 'date' | 'location') are left in the title.
+ *
+ * Returns { title, priority, dueDate, recurrence, location, tokens } where
+ * tokens describe what was recognized, for the preview chips.
+ */
+export function parseQuickAdd(text, { today = todayISO(), ignored = new Set() } = {}) {
+  const result = { title: '', priority: null, dueDate: null, recurrence: null, location: null, tokens: [] };
+  let work = String(text || '');
 
-  if (!parsed || !parsed.tokens || parsed.tokens.length === 0) {
-    container.style.display = 'none';
-    return;
+  if (!ignored.has('priority')) {
+    const m = PRIORITY_RE.exec(work);
+    if (m) {
+      result.priority = Number(m[1]);
+      result.tokens.push({ type: 'priority', label: `P${m[1]}` });
+      work = cut(work, m);
+    }
   }
 
-  container.style.display = 'flex';
-
-  parsed.tokens.forEach((token) => {
-    const badge = document.createElement('span');
-    badge.className = `token-preview-chip ${token.type} ${token.type === 'priority' ? `priority-${token.value}` : ''}`;
-    badge.textContent = token.label;
-    badge.title = 'Click to dismiss';
-    if (onDismiss) {
-      badge.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-      });
-      badge.addEventListener('click', (e) => {
-        try {
-          e.preventDefault();
-          e.stopPropagation();
-          onDismiss(token);
-        } catch (err) {
-          console.error('Error dismissing token preview chip:', err);
+  if (!ignored.has('recurrence')) {
+    const cron = CRON_RE.exec(work);
+    if (cron) {
+      result.recurrence = `cron:${cron[1].trim().split(/\s+/).join(' ')}`;
+      work = cut(work, cron);
+    } else {
+      for (const [re, rule] of RECURRENCES) {
+        const m = re.exec(work);
+        if (m) {
+          result.recurrence = rule;
+          work = cut(work, m);
+          break;
         }
-      });
+      }
     }
-    container.appendChild(badge);
-  });
+    if (result.recurrence) result.tokens.push({ type: 'recurrence', label: recurrenceLabel(result.recurrence) });
+  }
+
+  if (!ignored.has('date')) {
+    const found = findDue(work, today);
+    if (found) {
+      result.dueDate = found.due;
+      work = found.rest;
+    }
+  }
+  // "every monday" without a date starts on the next Monday.
+  if (result.recurrence?.startsWith('weekly:') && !ignored.has('date')) {
+    const weekday = WEEKDAY_NUMBERS[result.recurrence.slice(7)];
+    const { date, time } = splitDue(result.dueDate);
+    if (!date || date === today) result.dueDate = joinDue(nextWeekday(today, weekday), time);
+  }
+  if (result.dueDate) result.tokens.push({ type: 'date', label: formatDue(result.dueDate, today).text });
+
+  if (!ignored.has('location')) {
+    const quoted = /@(["'])(.+?)\1/.exec(work);
+    const plain = /@(\S.*)$/.exec(work);
+    const m = quoted || plain;
+    const location = m ? (quoted ? quoted[2] : plain[1]).trim().replace(/\s+/g, ' ') : '';
+    if (location) {
+      result.location = location;
+      result.tokens.push({ type: 'location', label: location });
+      work = cut(work, m);
+    }
+  }
+
+  result.title = work.trim().replace(/\s+/g, ' ');
+  return result;
 }

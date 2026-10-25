@@ -20,7 +20,7 @@
           packages = rec {
             getdone = pkgs.buildGoModule {
               pname = "getdone";
-              version = "1.0.0";
+              version = "1.1.0";
               src = ./.;
 
               subPackages = [ "cmd/server" ];
@@ -34,7 +34,7 @@
 
               meta = with pkgs.lib; {
                 description = "Get Done — Minimalist Todo List with Rosé Pine design & Vim navigation";
-                homepage = "https://github.com/ben-hourlier/getdone";
+                homepage = "https://github.com/bhr-tools/GetDone";
                 license = licenses.mit;
                 mainProgram = "getdone";
               };
@@ -71,7 +71,7 @@
 
             package = lib.mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.default;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
               description = "The Get Done package to use.";
             };
 
@@ -99,12 +99,6 @@
                     type = lib.types.path;
                     default = "${config.dataDir}/getdone.db";
                     description = "Path to the SQLite database for this instance.";
-                  };
-
-                  googleMapsKey = lib.mkOption {
-                    type = lib.types.nullOr lib.types.str;
-                    default = null;
-                    description = "Google Places / Maps API key for address autocomplete.";
                   };
 
                   noAuth = lib.mkOption {
@@ -167,14 +161,30 @@
 
                 serviceConfig = {
                   ExecStart = "${cfg.package}/bin/getdone -host ${inst.host} -port ${toString inst.port} -data-dir ${toString inst.dataDir} -db ${toString inst.dbPath}"
-                    + lib.optionalString (inst.googleMapsKey != null) " -google-maps-key ${inst.googleMapsKey}"
                     + lib.optionalString inst.noAuth " -no-auth";
                   Restart = "always";
                   RestartSec = 3;
                   User = inst.user;
                   Group = inst.group;
-                  StateDirectory = lib.removePrefix "/var/lib/" (toString inst.dataDir);
                   WorkingDirectory = toString inst.dataDir;
+                  ReadWritePaths = [ (toString inst.dataDir) ];
+                  # Hardening: the service only needs its data directory and the network.
+                  NoNewPrivileges = true;
+                  PrivateTmp = true;
+                  PrivateDevices = true;
+                  ProtectSystem = "strict";
+                  ProtectHome = true;
+                  ProtectKernelTunables = true;
+                  ProtectKernelModules = true;
+                  ProtectControlGroups = true;
+                  RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+                  RestrictNamespaces = true;
+                  LockPersonality = true;
+                  MemoryDenyWriteExecute = true;
+                  SystemCallArchitectures = "native";
+                } // lib.optionalAttrs (lib.hasPrefix "/var/lib/" (toString inst.dataDir)) {
+                  # systemd creates and owns the directory when it lives under /var/lib.
+                  StateDirectory = lib.removePrefix "/var/lib/" (toString inst.dataDir);
                 };
               }
             ) cfg.instances;
@@ -185,7 +195,7 @@
       nixosModules.default = nixosModule;
       nixosModules.getdone = nixosModule;
       overlays.default = final: prev: {
-        getdone = self.packages.${final.system}.default;
+        getdone = self.packages.${final.stdenv.hostPlatform.system}.default;
       };
     };
 }

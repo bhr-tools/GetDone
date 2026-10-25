@@ -1,0 +1,15 @@
+services:
+  getdone:
+    build: .
+    image: getdone:latest
+    container_name: getdone
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8766:8080"
+    environment:
+      TZ: Europe/Paris
+    volumes:
+      - getdone-data:/data
+
+volumes:
+  getdone-data:

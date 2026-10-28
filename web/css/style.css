@@ -885,6 +885,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
     border-radius: 18px 18px 0 0;
     animation: sheet-up 0.25s cubic-bezier(0.3, 1, 0.3, 1);
   }
+  /* Above the iOS keyboard (--vv-* are set in overlay.js). */
+  .popover.sheet { bottom: var(--vv-bottom, 0); max-height: min(85dvh, var(--vv-height, 100dvh)); }
   .sheet .sheet-handle, .detail .sheet-handle {
     display: block;
     width: 36px;
@@ -900,7 +902,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
   .sheet .calendar-day { width: 40px; height: 40px; font-size: 0.9rem; }
 
   /* Bottom sheet dialogs */
-  .modal-overlay { padding: 0; }
+  .modal-overlay { padding: 0; top: var(--vv-top, 0); bottom: auto; height: var(--vv-height, 100%); }
+  .modal { max-height: min(88dvh, var(--vv-height, 100dvh)); }
   .modal { width: min(440px, calc(100% - 24px)); }
   .modal.picker { width: calc(100% - 24px); margin-top: max(12px, env(safe-area-inset-top)); }
   .modal-overlay:has(.quick-add), .modal-overlay:has(.detail-modal) { align-items: flex-end; }

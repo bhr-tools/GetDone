@@ -4,6 +4,22 @@
 
 import { h, icon, isMobile } from '../dom.js';
 
+// iOS ignores interactive-widget=resizes-content: the keyboard covers the page
+// instead of shrinking it. Expose the visible area so that dialogs and bottom
+// sheets can sit above the keyboard (see the phone rules in style.css).
+const viewport = window.visualViewport;
+if (viewport) {
+  const sync = () => {
+    const style = document.documentElement.style;
+    style.setProperty('--vv-top', `${viewport.offsetTop}px`);
+    style.setProperty('--vv-height', `${viewport.height}px`);
+    style.setProperty('--vv-bottom', `${Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height)}px`);
+  };
+  viewport.addEventListener('resize', sync);
+  viewport.addEventListener('scroll', sync);
+  sync();
+}
+
 // ---------------------------------------------------------------------------
 // Popover
 // ---------------------------------------------------------------------------

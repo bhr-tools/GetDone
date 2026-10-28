@@ -144,11 +144,11 @@ export function openModal({ title, body, footer, className = '', dismissible = t
   modals.push(handle);
   document.body.append(overlay);
   document.body.classList.add('has-modal');
-  requestAnimationFrame(() => {
-    overlay.classList.add('open');
-    if (autofocus) box.querySelector('[autofocus], input:not([type=hidden]):not([readonly]), textarea')?.focus();
-    else box.focus({ preventScroll: true });
-  });
+  // Focus synchronously: iOS only opens the keyboard when focus() runs inside
+  // the tap that opened the dialog, not in a later animation frame.
+  if (autofocus) box.querySelector('[autofocus], input:not([type=hidden]):not([readonly]), textarea')?.focus();
+  else box.focus({ preventScroll: true });
+  requestAnimationFrame(() => overlay.classList.add('open'));
   return handle;
 }
 

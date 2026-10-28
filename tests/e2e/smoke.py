@@ -195,7 +195,12 @@ def phone(browser):
     page.locator(".project-row", has_text="Work").tap()
     page.wait_for_timeout(400)
     shot(page, "m03-project")
-    page.locator("#fab").tap()
+    # iOS only opens the keyboard if the title gets the focus within the tap.
+    focused = page.evaluate("""() => {
+        document.getElementById('fab').click();
+        return document.activeElement?.classList.contains('composer-title');
+    }""")
+    assert focused, "quick add title not focused synchronously by the FAB"
     page.wait_for_timeout(350)
     page.locator(".composer-title").fill("Phone task friday")
     shot(page, "m04-quick-add")

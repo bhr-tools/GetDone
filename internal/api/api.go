@@ -26,6 +26,7 @@ type API struct {
 	// loginMu serializes password checks; a failed attempt holds it for a
 	// moment, which caps brute-force attempts without any bookkeeping.
 	loginMu sync.Mutex
+	codes   connectCodes // one-time codes of the apps being connected
 }
 
 // New returns the API. With noAuth, every request is accepted without login.
@@ -72,6 +73,15 @@ func (a *API) Handler() http.Handler {
 
 	auth("GET /api/search", a.search)
 	auth("GET /api/counts", a.counts)
+
+	// Connected apps (see connect.go).
+	auth("POST /api/connect", a.connect)
+	open("POST /api/connect/token", a.connectToken)
+	open("DELETE /api/connect", a.disconnectSelf)
+	auth("GET /api/apps", a.listApps)
+	auth("DELETE /api/apps/{id}", a.deleteApp)
+	open("GET /api/app/tasks", a.appProject(a.appTasks))
+	open("POST /api/app/tasks", a.appProject(a.appCreateTask))
 
 	open("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Unknown API endpoint")

@@ -169,6 +169,16 @@ var migrations = []string{
 	WHERE id IN (SELECT id FROM tree);
 	DELETE FROM auth_sessions;
 	CREATE INDEX IF NOT EXISTS idx_tasks_siblings ON tasks(project_id, section_id, parent_id, position);`,
+
+	// 3: apps connected by the user (see apps.go), each to one project.
+	`CREATE TABLE IF NOT EXISTS app_tokens (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		token_hash TEXT NOT NULL UNIQUE,
+		created_at DATETIME NOT NULL,
+		used_at DATETIME
+	);`,
 }
 
 func (s *Store) migrate() error {

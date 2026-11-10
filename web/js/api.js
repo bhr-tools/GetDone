@@ -112,6 +112,13 @@ export const api = {
     restore: (tasks, updates) => post('/api/tasks/restore', { tasks, updates }),
   },
 
+  /** fields: { project_id } or { new_project } */
+  connect: (app, redirectUri, fields) => post('/api/connect', { app, redirect_uri: redirectUri, ...fields }),
+  apps: {
+    list: () => get('/api/apps'),
+    remove: (appId) => del(`/api/apps/${id(appId)}`),
+  },
+
   search: (query) => get(`/api/search?q=${id(query)}`),
   counts: () => get(`/api/counts?today=${todayISO()}`),
 };

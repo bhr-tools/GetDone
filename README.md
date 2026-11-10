@@ -59,6 +59,10 @@ Morning meditation every day
 
 Recognized parts are shown as chips while typing; click a chip to keep that text in the title instead.
 
+## Connected apps
+
+Another app (such as a planning assistant) can be given access to **one project**: it adds tasks there and reads that project's tasks, nothing else. The app sends you to `/?connect=<name>&redirect_uri=<url>&state=<s>`; Get Done asks which project it may use (a new one named after the app by default), then sends you back with a one-time code that the app's server trades for a token (`POST /api/connect/token`). With that token (`Authorization: Bearer …`), `GET /api/app/tasks` lists the project's open tasks and `POST /api/app/tasks` (`title`, `description`, `due_date`) adds one. Disconnect an app from the lock menu → Connected apps, or by deleting its project.
+
 ## Installation & usage
 
 ### Standalone (Go 1.26+)

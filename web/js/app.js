@@ -72,6 +72,7 @@ class App {
     if (!status.authenticated) return this.showLogin();
     await this.loadProjects();
     await this.switchView('inbox');
+    this.showConnect();
   }
 
   // -------------------------------------------------------------------------
@@ -1094,6 +1095,80 @@ class App {
     this.state.auth = { ...this.state.auth, has_password: true, authenticated: true };
     await this.loadProjects();
     await this.switchView(this.state.view, this.state.projectId);
+    this.showConnect();
+  }
+
+  // -------------------------------------------------------------------------
+  // Connected apps (an app sends the user to
+  // /?connect=<name>&redirect_uri=<url>&state=<s>; see internal/api/connect.go)
+  // -------------------------------------------------------------------------
+
+  showConnect() {
+    const q = new URLSearchParams(location.search);
+    const name = q.get('connect');
+    if (!name) return;
+    const redirect = q.get('redirect_uri') || '';
+    const state = q.get('state') || '';
+    history.replaceState(null, '', '/');
+    let host = '';
+    try {
+      const u = new URL(redirect);
+      if (u.protocol === 'https:' || u.protocol === 'http:') host = u.host;
+    } catch { /* no valid address */ }
+    const back = (params) => {
+      const u = new URL(redirect);
+      for (const [k, v] of Object.entries({ ...params, state })) u.searchParams.set(k, v);
+      location.href = u.toString();
+    };
+    const NEW = '';
+    const project = h('select', { class: 'input', attrs: { 'aria-label': 'Project' } },
+      h('option', { value: NEW }, `New project “${name}”`),
+      this.flatProjects().map(({ project: p, depth }) => h('option', { value: p.id }, `${'\u00a0\u00a0'.repeat(depth)}${p.name}`)));
+    const error = h('div', { class: 'form-error', hidden: !!host }, host ? '' : 'This request has no valid address to come back to.');
+    const allow = h('button', { type: 'button', class: 'button primary', disabled: !host }, 'Allow');
+    const deny = h('button', { type: 'button', class: 'button' }, 'Deny');
+    const modal = openModal({
+      title: `Connect ${name}`,
+      className: 'dialog',
+      dismissible: false,
+      body: h('div', { class: 'auth-form' },
+        h('p', { class: 'dialog-message' }, `${name} (${host || 'unknown address'}) asks to add tasks to one project and to read that project's tasks. It sees nothing else.`),
+        error,
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Project'), project)),
+      footer: [deny, allow],
+    });
+    allow.onclick = async () => {
+      allow.disabled = true;
+      try {
+        const { code } = await api.connect(name, redirect, project.value === NEW ? { new_project: name } : { project_id: project.value });
+        back({ code });
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+        allow.disabled = false;
+      }
+    };
+    deny.onclick = () => {
+      if (host) back({ error: 'access_denied' });
+      else modal.close();
+    };
+  }
+
+  async connectedApps() {
+    let apps = [];
+    try { apps = await api.apps.list(); } catch (err) { this.reportError(err); return; }
+    const list = h('div', { class: 'apps-list' });
+    const render = () => list.replaceChildren(...(apps.length ? apps.map((a) => h('div', { class: 'app-row' },
+      h('div', { class: 'app-info' }, h('strong', {}, a.name), h('span', { class: 'dialog-message' },
+        ` adds to “${a.project_name}” · ${a.used_at ? 'last used ' + a.used_at.slice(0, 10) : 'connected ' + a.created_at.slice(0, 10)}`)),
+      h('button', { type: 'button', class: 'button danger', onclick: async () => {
+        await this.run(() => api.apps.remove(a.id));
+        apps = apps.filter((x) => x.id !== a.id);
+        toast(`${a.name} disconnected`);
+        render();
+      } }, 'Disconnect'))) : [h('p', { class: 'dialog-message' }, 'No app is connected. An app asks for access from its own settings.')]));
+    render();
+    openModal({ title: 'Connected apps', className: 'dialog', body: list });
   }
 
   changePassword() {
@@ -1163,6 +1238,7 @@ class App {
     $('add-project').addEventListener('click', () => this.createProject());
     $('auth-menu').addEventListener('click', () => openMenu($('auth-menu'), [
       { label: 'Change password', icon: 'key', run: () => this.changePassword() },
+      { label: 'Connected apps', icon: 'link', run: () => this.connectedApps() },
       { label: 'Lock', icon: 'lock', run: () => this.lock() },
     ], { title: 'Security' }));
     $('sort-button').addEventListener('click', () => openMenu($('sort-button'), Object.entries(SORT_LABELS).map(([sort, label]) => ({

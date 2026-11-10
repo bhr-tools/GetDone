@@ -765,9 +765,9 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .status-hints { overflow: hidden; color: var(--rp-muted); }
 .status-hints kbd + kbd { margin-left: 2px; }
 .status-mode { padding: 0 6px; border-radius: 3px; background: var(--rp-overlay); color: var(--rp-gold); font-weight: 700; letter-spacing: 0.05em; }
-.status-mode.insert { background: var(--rp-love); color: var(--on-accent); }
-.status-mode.visual { background: var(--rp-iris); color: var(--on-accent); }
-.status-mode.sidebar { color: var(--rp-foam); }
+.status-mode.mode-insert { background: var(--rp-love); color: var(--on-accent); }
+.status-mode.mode-visual { background: var(--rp-iris); color: var(--on-accent); }
+.status-mode.mode-sidebar { color: var(--rp-foam); }
 .status-position { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .status-help { color: inherit; font-size: inherit; }
 

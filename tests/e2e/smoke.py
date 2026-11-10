@@ -1,15 +1,15 @@
 """End-to-end smoke test of the web app in Chromium (desktop and phone).
 
 Run against a fresh instance (see tests/e2e/run.sh). Screenshots are written
-to $OUT (default /out).
+to $OUT (default tests/e2e/out).
 """
 import os
 import re
 import sys
 from playwright.sync_api import sync_playwright, expect
 
-BASE = os.environ.get("BASE_URL", "http://getdone-e2e:8080")
-OUT = os.environ.get("OUT", "/out")
+BASE = os.environ.get("BASE_URL", "http://127.0.0.1:18080")
+OUT = os.environ.get("OUT", "tests/e2e/out")
 PASSWORD = "correct horse"
 errors = []
 

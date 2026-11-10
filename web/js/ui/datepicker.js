@@ -54,7 +54,8 @@ export function datePicker(value, onPick) {
       h('button', { type: 'button', class: 'menu-item danger', onclick: () => onPick(null) },
         icon('noDate'), h('span', { class: 'menu-label' }, 'No date'))));
   requestAnimationFrame(() => {
-    if (window.matchMedia('(pointer: fine)').matches) input.focus();
+    // Don't steal focus from a field of the picker already in use.
+    if (window.matchMedia('(pointer: fine)').matches && !root.contains(document.activeElement)) input.focus();
   });
   return root;
 }

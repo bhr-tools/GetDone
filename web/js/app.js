@@ -189,7 +189,7 @@ class App {
     const label = mode || (s.selection.size ? `VISUAL (${s.selection.size})` : s.focus === 'sidebar' ? 'SIDEBAR' : 'NORMAL');
     const modeEl = $('status-mode');
     modeEl.textContent = `-- ${label} --`;
-    modeEl.className = `status-mode ${label.split(' ')[0].toLowerCase()}`;
+    modeEl.className = `status-mode mode-${label.split(' ')[0].toLowerCase()}`;
     const index = this.order.findIndex((t) => t.id === s.cursorId);
     $('status-position').textContent = `${index >= 0 ? index + 1 : 0} / ${this.order.length}`;
   }

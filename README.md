@@ -9,7 +9,7 @@ A fast, self-hosted personal task manager inspired by the original spirit of Tod
 - **Deterministic Quick Add:** Instant offline parsing of dates, times, priorities, recurrences and locations, in English and French.
 - **Rosé Pine palette:** Moon (dark) and Dawn (light) themes, following the system setting.
 - **Locations:** Add an address or place name to get a one-click Google Maps link.
-- **One binary:** A single Go binary with embedded SQLite and web app, packaged with Nix Flakes (multi-instance NixOS module) and Docker.
+- **One binary:** A single Go binary with embedded SQLite and web app, packaged with Nix Flakes (multi-instance NixOS module).
 
 ## Keyboard shortcuts
 
@@ -60,16 +60,6 @@ Morning meditation every day
 Recognized parts are shown as chips while typing; click a chip to keep that text in the title instead.
 
 ## Installation & usage
-
-### Docker
-
-```
-git clone https://github.com/bhr-tools/GetDone.git
-cd GetDone
-docker compose up -d --build
-```
-
-Open http://127.0.0.1:8766. The database lives in the `getdone-data` volume.
 
 ### Standalone (Go 1.26+)
 
@@ -139,12 +129,12 @@ When serving over HTTPS through a reverse proxy, forward the `X-Forwarded-Proto`
 
 ## Backups
 
-All data (projects, sections, tasks, password hash and sessions) is stored in a single SQLite file: `getdone.db` in the data directory (`/var/lib/getdone/getdone.db` on NixOS, the `getdone-data` volume with Docker). The database runs in WAL mode: back it up with `sqlite3 getdone.db ".backup backup.db"`, or copy `getdone.db` together with its `-wal` file while the service is stopped.
+All data (projects, sections, tasks, password hash and sessions) is stored in a single SQLite file: `getdone.db` in the data directory (`/var/lib/getdone/getdone.db` on NixOS). The database runs in WAL mode: back it up with `sqlite3 getdone.db ".backup backup.db"`, or copy `getdone.db` together with its `-wal` file while the service is stopped.
 
 ## Development
 
 ```
 go vet ./... && go test ./...           # server
 node --test tests/js/*.test.mjs         # quick add parser and date helpers
-sh tests/e2e/run.sh                     # browser tests (Docker, Playwright)
+sh tests/e2e/run.sh                     # browser tests (Playwright from nixpkgs)
 ```

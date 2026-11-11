@@ -16,5 +16,5 @@ pid=$!
 nix-shell -p 'python3.withPackages (ps: [ ps.playwright ])' --run "
   export PLAYWRIGHT_BROWSERS_PATH=$(nix build --no-link --print-out-paths nixpkgs#playwright-driver.browsers)
   export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-  BASE_URL=http://127.0.0.1:$PORT OUT=tests/e2e/out TZ=Europe/Paris python3 tests/e2e/smoke.py
+  BASE_URL=http://127.0.0.1:$PORT OUT=tests/e2e/out TZ=Europe/Paris python3 tests/e2e/smoke.py && python3 tests/e2e/offline.py
 "

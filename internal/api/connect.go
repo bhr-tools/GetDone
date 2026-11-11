@@ -24,7 +24,8 @@ import (
 //     (POST /api/connect/token), sent to it only, never to the browser.
 //
 // An app token adds tasks to its project and reads them (/api/app/tasks),
-// nothing else. The user disconnects the app from Security → Connected apps
+// and says what it opens (/api/app/info, the same in each of the user's
+// apps), nothing else. The user disconnects the app from Security → Connected apps
 // (or by deleting the project); the app may leave (DELETE /api/connect).
 
 const codeTTL = 5 * time.Minute
@@ -179,6 +180,18 @@ func (a *API) appProject(next func(w http.ResponseWriter, r *http.Request, proje
 		}
 		next(w, r, project)
 	}
+}
+
+// appInfo is the same in each of the user's apps: which app answers, and
+// what the token opens (here: one project, by id and name). An app checks
+// with it that its access still works.
+func (a *API) appInfo(w http.ResponseWriter, r *http.Request, project string) {
+	p, err := a.store.GetProject(project)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"app": "GetDone", "scope": "project", "id": p.ID, "name": p.Name})
 }
 
 // appTask is what an app sees of a task of its project.

@@ -80,6 +80,7 @@ func (a *API) Handler() http.Handler {
 	open("DELETE /api/connect", a.disconnectSelf)
 	auth("GET /api/apps", a.listApps)
 	auth("DELETE /api/apps/{id}", a.deleteApp)
+	open("GET /api/app/info", a.appProject(a.appInfo))
 	open("GET /api/app/tasks", a.appProject(a.appTasks))
 	open("POST /api/app/tasks", a.appProject(a.appCreateTask))
 

@@ -43,6 +43,9 @@ func TestConnectedApp(t *testing.T) {
 		}
 		return rec.Body.String()
 	}
+	if got := app("GET", "/api/app/info", "", 200); !strings.Contains(got, `"name":"Assistant"`) || !strings.Contains(got, `"scope":"project"`) {
+		t.Fatalf("app info: %s", got)
+	}
 	app("POST", "/api/app/tasks", `{"title":"Follow up: Optiver","description":"Sent to HR","due_date":"2026-11-20"}`, 201)
 	app("POST", "/api/app/tasks", `{"title":"x","due_date":"soon"}`, 400)
 	if got := app("GET", "/api/app/tasks", "", 200); !strings.Contains(got, `"title":"Follow up: Optiver"`) || !strings.Contains(got, `"due_date":"2026-11-20"`) {
@@ -59,6 +62,7 @@ func TestConnectedApp(t *testing.T) {
 	}
 	c.do("DELETE", "/api/projects/"+tok.ProjectID, nil, 200, nil)
 	app("GET", "/api/app/tasks", "", http.StatusUnauthorized)
+	app("GET", "/api/app/info", "", http.StatusUnauthorized)
 	c.do("GET", "/api/apps", nil, 200, &apps)
 	if len(apps) != 0 {
 		t.Fatalf("the app goes with its project: %+v", apps)

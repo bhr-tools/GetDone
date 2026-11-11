@@ -3,8 +3,19 @@
 
 import { todayISO } from './dates.js';
 import { ApiError } from './errors.js';
+import { SyncEngine, newId } from './sync/engine.js';
+import { EMPTY, fromSnapshot, projectTree, getProject, listSections, getTask, listTasks, searchTasks, counts } from './sync/state.js';
+import { reduce } from './sync/reduce.js';
 
 export { ApiError };
+
+/** Local data, kept in sync with the server (see sync/engine.js). */
+export const engine = new SyncEngine({ dbName: 'getdone', empty: EMPTY, fromSnapshot, reduce });
+
+// Reads answer from the local state; errors become rejected promises, as
+// with the network.
+const local = (fn) => Promise.resolve().then(() => fn(engine.state));
+const change = (type, args) => engine.mutate(type, args);
 
 let unauthorizedHandler = () => {};
 
@@ -43,7 +54,6 @@ async function request(method, path, body) {
 const get = (path) => request('GET', path);
 const post = (path, body = {}) => request('POST', path, body);
 const patch = (path, body) => request('PATCH', path, body);
-const put = (path, body) => request('PUT', path, body);
 const del = (path) => request('DELETE', path);
 const id = encodeURIComponent;
 
@@ -58,15 +68,15 @@ export const api = {
   },
 
   projects: {
-    list: () => get('/api/projects'),
-    get: (projectId) => get(`/api/projects/${id(projectId)}`),
-    create: (name, parentId) => post('/api/projects', { name, parent_id: parentId || null }),
-    rename: (projectId, name) => patch(`/api/projects/${id(projectId)}`, { name }),
-    remove: (projectId) => del(`/api/projects/${id(projectId)}`),
+    list: () => local((s) => projectTree(s)),
+    get: (projectId) => local((s) => getProject(s, projectId)),
+    create: (name, parentId) => change('project.create', { id: newId(), name, parent_id: parentId || null }),
+    rename: (projectId, name) => change('project.rename', { id: projectId, name }),
+    remove: (projectId) => change('project.delete', { id: projectId }),
     /** placement: { before_id } | { after_id } | {} (end) */
     move: (projectId, parentId, placement = {}) =>
-      post(`/api/projects/${id(projectId)}/move`, { parent_id: parentId || null, ...placement }),
-    setSort: (projectId, sortBy) => put(`/api/projects/${id(projectId)}/sort`, { sort_by: sortBy }),
+      change('project.move', { id: projectId, parent_id: parentId || null, ...placement }),
+    setSort: (projectId, sortBy) => change('project.sort', { id: projectId, sort_by: sortBy }),
     async exportCSV(projectId) {
       const res = await fetch(`/api/projects/${id(projectId)}/export`, { credentials: 'same-origin' });
       if (!res.ok) {
@@ -87,25 +97,27 @@ export const api = {
   },
 
   sections: {
-    list: (projectId) => get(`/api/sections?project_id=${id(projectId)}`),
-    create: (projectId, name) => post('/api/sections', { project_id: projectId, name }),
-    rename: (sectionId, name) => patch(`/api/sections/${id(sectionId)}`, { name }),
-    remove: (sectionId) => del(`/api/sections/${id(sectionId)}`),
+    list: (projectId) => local((s) => listSections(s, projectId)),
+    create: (projectId, name) => change('section.create', { id: newId(), project_id: projectId, name }),
+    rename: (sectionId, name) => change('section.rename', { id: sectionId, name }),
+    remove: (sectionId) => change('section.delete', { id: sectionId }),
     move: (sectionId, projectId, placement = {}) =>
-      post(`/api/sections/${id(sectionId)}/move`, { project_id: projectId || '', ...placement }),
+      change('section.move', { id: sectionId, project_id: projectId || '', ...placement }),
   },
 
   tasks: {
     list: (view, { projectId = '', sort = 'manual' } = {}) =>
-      get(`/api/tasks?view=${view}&project_id=${id(projectId)}&sort=${sort}&today=${todayISO()}`),
-    get: (taskId) => get(`/api/tasks/${id(taskId)}`),
-    create: (task) => post('/api/tasks', task),
-    update: (taskId, fields) => patch(`/api/tasks/${id(taskId)}`, fields),
+      local((s) => listTasks(s, view, projectId, sort, todayISO())),
+    get: (taskId) => local((s) => getTask(s, taskId)),
+    create: (task) => change('task.create', { ...task, id: newId() }),
+    update: (taskId, fields) => change('task.update', { id: taskId, fields }),
     /** target: { project_id, section_id, parent_id, before_id, after_id } */
-    move: (taskId, target) => post(`/api/tasks/${id(taskId)}/move`, target),
-    remove: (taskId) => del(`/api/tasks/${id(taskId)}`),
-    complete: (taskId) => post(`/api/tasks/${id(taskId)}/complete`, { today: todayISO() }),
-    restore: (tasks, updates) => post('/api/tasks/restore', { tasks, updates }),
+    move: (taskId, target) => change('task.move', { id: taskId, ...target }),
+    remove: (taskId) => change('task.delete', { id: taskId }),
+    complete: (taskId) => change('task.complete', {
+      id: taskId, today: todayISO(), due_date: engine.state.tasks[taskId]?.due_date ?? null,
+    }),
+    restore: (tasks, updates) => change('task.restore', { tasks, updates }),
   },
 
   /** fields: { project_id } or { new_project } */
@@ -115,6 +127,6 @@ export const api = {
     remove: (appId) => del(`/api/apps/${id(appId)}`),
   },
 
-  search: (query) => get(`/api/search?q=${id(query)}`),
-  counts: () => get(`/api/counts?today=${todayISO()}`),
+  search: (query) => local((s) => searchTasks(s, query)),
+  counts: () => local((s) => counts(s, todayISO())),
 };

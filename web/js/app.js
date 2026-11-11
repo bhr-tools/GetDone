@@ -1,6 +1,6 @@
 // Get Done web app: state, actions and orchestration of the views.
 
-import { api, ApiError, onUnauthorized } from './api.js';
+import { api, ApiError, engine, onUnauthorized } from './api.js';
 import { h, icon, isMobile } from './dom.js';
 import { todayISO, splitDue, withDate, addDays, parseISO, WEEKDAYS_SHORT, MONTHS_SHORT } from './dates.js';
 import { openModal, closeAllModals, closePopover, confirmDialog, promptDialog, openMenu, toast, topModal } from './ui/overlay.js';
@@ -55,6 +55,13 @@ class App {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkDay();
     });
+    await engine.init();
+    engine.onStatus = (s) => this.renderSync(s);
+    engine.onRejected = (messages) => toast(`Not saved: ${messages[0]}${messages.length > 1 ? ` (+${messages.length - 1})` : ''}`, { type: 'error' });
+    engine.onAuthRequired = () => this.showLogin();
+    engine.onChange = () => this.onRemoteChange();
+    engine.start();
+    this.registerServiceWorker();
     await this.boot();
   }
 
@@ -63,13 +70,22 @@ class App {
     try {
       status = await api.auth.status();
     } catch (err) {
-      this.showFatal(err);
-      return;
+      // No network: start from the data kept on this device, if any.
+      if (!engine.ready) {
+        this.showFatal(err);
+        return;
+      }
+      status = { no_auth: false, has_password: true, authenticated: true, offline: true };
     }
     this.state.auth = status;
     $('auth-menu').hidden = status.no_auth;
     if (!status.no_auth && !status.has_password) return this.showSetup();
     if (!status.authenticated) return this.showLogin();
+    if (!status.offline) await engine.sync();
+    if (!engine.ready) {
+      this.showFatal(new ApiError('Cannot load your tasks. Check your connection.', 0));
+      return;
+    }
     await this.loadProjects();
     await this.switchView('inbox');
     this.showConnect();
@@ -78,6 +94,37 @@ class App {
   // -------------------------------------------------------------------------
   // Loading and rendering
   // -------------------------------------------------------------------------
+
+  /** The local data changed under us (server answer, other tab). */
+  async onRemoteChange() {
+    if (!this.state.auth.authenticated) return;
+    await this.loadProjects();
+    await this.refresh();
+    // fill() leaves a text field being edited alone, so typing is not lost.
+    if (this.detail.isOpen) this.detail.reload();
+  }
+
+  /** Status bar: offline state and changes waiting for the server. */
+  renderSync({ status, pending }) {
+    const el = $('status-sync');
+    const text = {
+      offline: pending ? `offline · ${pending} pending` : 'offline',
+      auth: 'sign in to sync',
+      error: `sync error · ${pending} pending`,
+    }[status] ?? (pending ? `${pending} pending` : '');
+    el.textContent = text;
+    el.hidden = !text;
+    el.className = `status-sync ${status}`;
+  }
+
+  registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) toast('Get Done was updated', { action: { label: 'Reload', run: () => location.reload() } });
+    });
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 
   async loadProjects() {
     try {
@@ -137,10 +184,13 @@ class App {
     const strip = $('week-strip');
     strip.hidden = s.view !== 'upcoming';
     if (s.view === 'upcoming') renderWeekStrip(this, strip);
+    // Rendering can happen while the user types (a sync answer): the list is
+    // rebuilt and the composer detached, so note its focus before.
+    const composerFocused = Boolean(this.composer?.el.contains(document.activeElement));
     const { order, lists } = renderTasks(this, $('tasks'));
     this.order = order;
     this.lists = lists;
-    this.placeComposer();
+    this.placeComposer(composerFocused);
     if (s.cursorId && !order.some((t) => t.id === s.cursorId)) s.cursorId = null;
     if (!s.cursorId && order.length) s.cursorId = order[Math.min(this.cursorIndex, order.length - 1)].id;
     for (const id of [...s.selection]) if (!order.some((t) => t.id === id)) s.selection.delete(id);
@@ -582,10 +632,9 @@ class App {
   }
 
   /** Puts the open composer back in place after a render. */
-  placeComposer() {
+  placeComposer(hadFocus = this.composer?.el.contains(document.activeElement)) {
     const c = this.composer;
     if (!c) return;
-    const hadFocus = c.el.contains(document.activeElement);
     const after = c.target.afterId && $('tasks').querySelector(`.task-row[data-id="${CSS.escape(c.target.afterId)}"]`);
     if (after) {
       const tree = after.parentElement.classList.contains('task-tree') ? after.parentElement : after;
@@ -967,6 +1016,8 @@ class App {
       if (!result) return;
       const sections = result.sections_count ? ` and ${result.sections_count} section(s)` : '';
       toast(`Imported ${result.tasks_count} task(s)${sections}`, { type: 'success' });
+      await engine.sync();
+      await this.loadProjects();
       await this.refresh();
     });
     input.click();
@@ -1093,6 +1144,11 @@ class App {
 
   async afterLogin() {
     this.state.auth = { ...this.state.auth, has_password: true, authenticated: true };
+    await engine.sync();
+    if (!engine.ready) {
+      this.showFatal(new ApiError('Cannot load your tasks. Check your connection.', 0));
+      return;
+    }
     await this.loadProjects();
     await this.switchView(this.state.view, this.state.projectId);
     this.showConnect();
@@ -1192,7 +1248,14 @@ class App {
   }
 
   async lock() {
+    if (engine.pending) await engine.sync();
+    if (engine.pending) {
+      const ok = await confirmDialog('Unsynced changes',
+        `${engine.pending} change(s) have not reached the server yet and will be lost. Lock anyway?`, { okText: 'Lock' });
+      if (!ok) return;
+    }
     await this.run(() => api.auth.logout());
+    await engine.reset();
     this.showLogin();
   }
 

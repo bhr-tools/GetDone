@@ -115,9 +115,13 @@ export class SyncEngine {
    */
   async mutate(type, args) {
     const op = { id: newId(), type, args: structuredClone(args) };
+    const before = this.state;
     const result = this.reduce(this.state, op);
     op.seq = await this.storage.addOp(op);
     this.queue.push(op);
+    // A server answer may have replaced the state while the op was being
+    // stored: that state does not know this change yet.
+    if (this.state !== before) this.rebuild();
     this.channel?.postMessage('changed');
     this.emitStatus();
     this.schedule(300);

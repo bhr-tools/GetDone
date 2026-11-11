@@ -19,7 +19,10 @@ def watch(page):
     page.on("console", lambda m: m.type in ("error", "warning") and "401" not in m.text
             and errors.append(f"console {m.type}: {m.text}"))
     page.on("pageerror", lambda e: errors.append(f"page error: {e}"))
-    page.on("requestfailed", lambda r: errors.append(f"request failed: {r.url}"))
+    # A sync cut short by a reload or by closing the page is normal: the change
+    # stays queued and is sent again.
+    page.on("requestfailed", lambda r: "/api/sync" in r.url and "ERR_ABORTED" in (r.failure or "")
+            or errors.append(f"request failed: {r.url}"))
 
 
 def shot(page, name):

@@ -120,3 +120,18 @@ test('a change made while a request is in flight is replayed on the new snapshot
   assert.equal(calls, 2); // the second change is sent right after the first
   assert.equal(engine.pending, 0);
 });
+
+test('a server answer arriving while a change is being stored does not hide the change', async (t) => {
+  const id = '77777777-7777-4777-8777-777777777777';
+  const engine = await makeEngine(t);
+  const addOp = engine.storage.addOp;
+  engine.storage.addOp = async (op) => {
+    await new Promise((resolve) => setTimeout(resolve, 20)); // slow disk
+    return addOp(op);
+  };
+  const pending = engine.mutate('task.create', newTask(id));
+  await engine.accept({ snapshot: SNAP, etag: '"e5"' }, []);
+  await pending;
+  assert.ok(engine.state.tasks[id]);
+  assert.equal(engine.pending, 1);
+});

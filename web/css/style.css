@@ -768,6 +768,9 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .status-mode.mode-insert { background: var(--rp-love); color: var(--on-accent); }
 .status-mode.mode-visual { background: var(--rp-iris); color: var(--on-accent); }
 .status-mode.mode-sidebar { color: var(--rp-foam); }
+.status-sync { color: var(--rp-subtle); }
+.status-sync.offline { color: var(--rp-gold); }
+.status-sync.error, .status-sync.auth { color: var(--rp-love); }
 .status-position { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .status-help { color: inherit; font-size: inherit; }
 
@@ -853,7 +856,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
   .add-task { display: none; }
   .tasks { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 
+  /* On a phone the bar only shows the sync indicator, and only when it has something to say. */
   .statusbar { display: none; }
+  .statusbar:has(.status-sync:not([hidden])) { display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); height: auto; min-height: 28px; }
+  .status-mode, .status-position, .status-hints { display: none; }
   .fab {
     position: fixed;
     right: 20px;

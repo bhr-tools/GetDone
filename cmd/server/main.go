@@ -3,9 +3,14 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -85,8 +90,45 @@ func newHandler(store *db.Store, noAuth bool) http.Handler {
 		}
 		fmt.Fprintln(w, "ok")
 	})
+	mux.Handle("GET /sw.js", serviceWorker())
 	mux.Handle("/", noCache(http.FileServerFS(web.Files)))
 	return securityHeaders(mux)
+}
+
+// serviceWorker serves web/sw.js prefixed with the files to keep for offline
+// use and a version that changes with any of them.
+func serviceWorker() http.Handler {
+	files := []string{}
+	sum := sha256.New()
+	err := fs.WalkDir(web.Files, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(web.Files, p)
+		if err != nil {
+			return err
+		}
+		sum.Write([]byte(p))
+		sum.Write(b)
+		if p == "index.html" {
+			files = append(files, "/") // the file server answers "/" with index.html
+		} else {
+			files = append(files, "/"+p)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatalf("service worker: %v", err)
+	}
+	sum.Write([]byte(web.ServiceWorker))
+	list, _ := json.Marshal(files)
+	body := fmt.Sprintf("const VERSION = %q;\nconst FILES = %s;\n%s",
+		hex.EncodeToString(sum.Sum(nil))[:16], list, web.ServiceWorker)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		io.WriteString(w, body)
+	})
 }
 
 // noCache makes browsers revalidate the web app on every load, so an upgrade

@@ -207,6 +207,12 @@ class App {
   }
 
   render() {
+    // Redrawing during a drag would bring back the hidden item and detach the
+    // rows being measured: wait for the drop (see dragEnded).
+    if (document.body.classList.contains('is-dragging')) {
+      this.renderLater = true;
+      return;
+    }
     const s = this.state;
     renderSidebar(this, $('nav'), $('project-tree'));
     this.renderHeader();
@@ -785,10 +791,41 @@ class App {
     return under.closest('.main') ? this.taskGap(id, y, pull, previous) : null;
   }
 
+  /**
+   * Called when a drag starts. Remembers the depth of the dragged task or
+   * project and where its circle (or icon) sits, so the line's dot lines up
+   * with that column at every depth. Returns the element to hide while
+   * dragging: the item and its subtasks or subprojects leave the list, which
+   * closes up, as in Todoist.
+   */
+  dragStart(kind, el) {
+    if (kind !== 'task' && kind !== 'project') return null;
+    const task = kind === 'task';
+    const root = task ? el.closest('.task-list') : $('project-tree');
+    if (!root) return null;
+    const cls = task ? 'subtasks' : 'project-children';
+    const indent = task ? TASK_INDENT : PROJECT_INDENT;
+    const depth = depthIn(el, root, cls);
+    const mark = (el.querySelector(task ? '.task-check' : '.project-icon, .status-dot') || el).getBoundingClientRect();
+    this.dragInfo = { depth, mark: mark.left + mark.width / 2 - root.getBoundingClientRect().left - depth * indent };
+    if (!task) return el.closest('.project-node');
+    const tree = el.parentElement;
+    return tree.classList.contains('task-tree') && tree.firstElementChild === el ? tree : el;
+  }
+
+  /** Called when a drag ends, dropped or cancelled. */
+  dragEnded() {
+    this.dragInfo = null;
+    if (this.renderLater) {
+      this.renderLater = false;
+      this.render();
+    }
+  }
+
   /** The gap line for a task: in any list of the view, at any depth allowed there. */
   taskGap(id, y, pull, previous) {
     const source = document.querySelector(`#tasks .task-row[data-id="${CSS.escape(id)}"]`);
-    if (!source) return null;
+    if (!source || !this.dragInfo) return null;
     const subtree = source.parentElement.classList.contains('task-tree') && source.parentElement.firstElementChild === source
       ? source.parentElement : source;
     let best = null;
@@ -800,12 +837,12 @@ class App {
     }
     if (!best) return null;
     const { list, rows, gap, box } = best;
-    const raw = depthIn(source, list, 'subtasks') + pull / TASK_INDENT;
+    const raw = this.dragInfo.depth + pull / TASK_INDENT;
     const depth = pickDepth(raw, gap, previous?.place === 'gap' && previous.list === list ? previous.depth : null);
-    const left = box.left + depth * TASK_INDENT - 6;
+    const left = box.left + this.dragInfo.mark + depth * TASK_INDENT;
     return {
       place: 'gap', list, depth,
-      line: { left, top: gap.y - 1, width: box.right - left },
+      line: { left, top: gap.y, width: box.right - left },
       projectId: list.dataset.projectId, sectionId: list.dataset.sectionId || null,
       ...resolveDrop(rows, gap.index, depth),
     };
@@ -815,17 +852,15 @@ class App {
   projectGap(id, y, pull, previous) {
     const tree = $('project-tree');
     const source = tree.querySelector(`.project-row[data-id="${CSS.escape(id)}"]`);
-    if (!source) return null;
+    if (!source || !this.dragInfo) return null;
     const rows = gapRows(tree.querySelectorAll('.project-row[data-drop="project"]'), tree, 'project-children', source.closest('.project-node'));
     const box = tree.getBoundingClientRect();
     const gap = nearestGap(listGaps(rows, box.top + 8), y);
-    const sourceDepth = depthIn(source, tree, 'project-children');
-    const depth = pickDepth(sourceDepth + pull / PROJECT_INDENT, gap, previous?.place === 'gap' ? previous.depth : null);
-    const base = source.getBoundingClientRect().left - sourceDepth * PROJECT_INDENT;
-    const left = base + depth * PROJECT_INDENT;
+    const depth = pickDepth(this.dragInfo.depth + pull / PROJECT_INDENT, gap, previous?.place === 'gap' ? previous.depth : null);
+    const left = box.left + this.dragInfo.mark + depth * PROJECT_INDENT;
     return {
       place: 'gap', depth,
-      line: { left, top: gap.y - 1, width: box.right - 8 - left },
+      line: { left, top: gap.y, width: box.right - 10 - left },
       ...resolveDrop(rows, gap.index, depth),
     };
   }

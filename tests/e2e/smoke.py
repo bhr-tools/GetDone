@@ -381,8 +381,10 @@ def workflows(browser):
     page.get_by_role("button", name="Create", exact=True).click()
     expect(page.locator("#view-title")).to_have_text("Clients")
     work = page.locator(".project-row", has_text="Work")
+    expect(page.locator(".project-row", has_text="Clients")).to_be_visible()
+    expect(work).to_be_visible()
     w = work.bounding_box()
-    pull(page, page.locator(".project-row", has_text="Clients"), 30, w["y"] + w["height"] + 1)
+    pull(page, page.locator(".project-row", has_text="Clients"), 30, w["y"] + w["height"] + 1, shot_name="w04a-project-line")
     expect(page.locator(".project-children .project-row", has_text="Clients")).to_have_count(1)
     shot(page, "w04-dark-nested-projects")
 

@@ -15,7 +15,7 @@ const IGNORE = 'button, a, input, textarea, select, .task-check';
 
 export function initDragAndDrop(app) {
   let pending = null; // { el, x, y, timer }
-  let drag = null;    // { kind, id, source, ghost, offsetX, offsetY, originLeft, target, x, y }
+  let drag = null;    // { kind, id, source, hidden, ghost, startX, offsetX, target, x, y }
   let suppressClickUntil = 0;
   const line = document.createElement('div');
   line.className = 'drop-line';
@@ -25,14 +25,18 @@ export function initDragAndDrop(app) {
   const start = (el, x, y) => {
     const rect = el.getBoundingClientRect();
     const ghost = el.cloneNode(true);
+    ghost.classList.remove('cursor', 'selected', 'active');
     ghost.classList.add('drag-ghost');
-    Object.assign(ghost.style, { width: `${rect.width}px`, left: `${rect.left}px`, top: `${rect.top}px` });
+    Object.assign(ghost.style, { width: `${Math.min(rect.width, 420)}px`, left: `${rect.left}px`, top: `${rect.top}px` });
     document.body.append(ghost);
-    el.classList.add('dragging');
+    // Tasks and projects leave their list while dragged (the line shows where
+    // they will land); sections stay, faded.
+    const hidden = app.dragStart(el.dataset.drag, el);
+    (hidden || el).classList.add(hidden ? 'drag-hidden' : 'dragging');
     document.body.classList.add('is-dragging');
     drag = {
-      kind: el.dataset.drag, id: el.dataset.id, source: el, ghost,
-      offsetX: x - rect.left, offsetY: y - rect.top, originLeft: rect.left, target: null,
+      kind: el.dataset.drag, id: el.dataset.id, source: el, hidden, ghost,
+      startX: x, offsetX: Math.min(x - rect.left, 40), target: null,
     };
     app.closeTransientUi();
   };
@@ -40,8 +44,9 @@ export function initDragAndDrop(app) {
   const move = (x, y) => {
     drag.x = x;
     drag.y = y;
+    // The ghost floats just under the pointer, so the line stays in sight.
     drag.ghost.style.left = `${x - drag.offsetX}px`;
-    drag.ghost.style.top = `${y - drag.offsetY}px`;
+    drag.ghost.style.top = `${y + 14}px`;
     autoScroll(x, y);
     locate();
   };
@@ -51,7 +56,7 @@ export function initDragAndDrop(app) {
     const { x, y } = drag;
     const under = document.elementFromPoint(x, y);
     // How far the item was pulled right (or left) since the drag started.
-    const pull = x - drag.offsetX - drag.originLeft;
+    const pull = x - drag.startX;
     const target = under ? app.dropTarget(drag.kind, drag.id, under, x, y, pull, drag.target) : null;
     const oldEl = drag.target?.line ? null : drag.target?.el;
     const newEl = target?.line ? null : target?.el;
@@ -70,7 +75,8 @@ export function initDragAndDrop(app) {
 
   const finish = (commit) => {
     if (drag) {
-      const { kind, id, target, source, ghost } = drag;
+      const { kind, id, target, source, hidden, ghost } = drag;
+      hidden?.classList.remove('drag-hidden');
       target?.el?.classList.remove('drop-before', 'drop-after', 'drop-into');
       showLine(null);
       source.classList.remove('dragging');
@@ -78,6 +84,7 @@ export function initDragAndDrop(app) {
       document.body.classList.remove('is-dragging');
       drag = null;
       suppressClickUntil = Date.now() + 350;
+      app.dragEnded();
       if (commit && target) app.drop(kind, id, target);
     }
     if (pending) clearTimeout(pending.timer);

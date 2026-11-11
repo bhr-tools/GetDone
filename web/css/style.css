@@ -684,6 +684,73 @@ select.input { cursor: pointer; }
 .detail-description:hover { border-color: var(--border); }
 .detail-description:focus { border-color: var(--border); background: var(--rp-overlay); color: var(--rp-text); }
 .detail-title::placeholder, .detail-description::placeholder { color: var(--rp-muted); }
+/* Attachments: thumbnails and chips under the description, kept quiet */
+.detail-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -4px; }
+.file-item { position: relative; display: flex; min-width: 0; max-width: 100%; }
+.file-thumb {
+  display: block;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--rp-overlay);
+}
+.file-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 260px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--rp-subtle) 11%, transparent);
+  color: var(--rp-subtle);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+.file-chip:hover, .file-thumb:hover { border-color: var(--rp-hl-high); background-color: var(--rp-hl-med); }
+.file-chip .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip .file-size { flex-shrink: 0; color: var(--rp-muted); }
+.file-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--rp-surface);
+  color: var(--rp-muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.file-remove .icon svg { width: 10px; height: 10px; }
+.file-remove:hover { color: var(--rp-love); }
+.file-item:hover .file-remove, .file-remove:focus-visible { opacity: 1; }
+@media (hover: none) { .file-remove { opacity: 0.85; } }
+.file-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rp-muted);
+  font-size: 0.8rem;
+}
+.file-add:hover { background: var(--rp-hl-low); color: var(--rp-text); }
+.file-add.compact { width: 26px; padding: 0; justify-content: center; border: 1px dashed var(--border); }
+.detail-modal.file-over { outline: 2px dashed var(--rp-pine); outline-offset: -6px; }
+.badge.files { color: var(--rp-muted); background: transparent; padding: 1px 2px; }
+
 .detail-subtasks { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .task-list.compact .task-row { margin: 0; }
 

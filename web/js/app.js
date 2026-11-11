@@ -1057,6 +1057,7 @@ class App {
           h('h3', { class: 'field-label' }, 'Task details'),
           row(['Enter'], 'Edit the title'),
           row(['a'], 'Add a subtask'),
+          row(['f'], 'Attach a file'),
           row(['Ctrl', 'Enter'], 'Save the description'))),
     });
   }
@@ -1316,8 +1317,8 @@ class App {
       const items = [{ label: 'Undo completion', icon: 'undo', hint: 'u', run: () => this.undo() }];
       if (this.state.view !== 'upcoming') {
         items.push('separator',
-          { label: 'Export (Todoist CSV)', icon: 'download', run: () => this.exportCSV() },
-          { label: 'Import (Todoist CSV)', icon: 'upload', run: () => this.importCSV() });
+          { label: 'Export as CSV', icon: 'download', run: () => this.exportCSV() },
+          { label: 'Import a CSV', icon: 'upload', run: () => this.importCSV() });
       }
       openMenu($('more-button'), items);
     });

@@ -70,6 +70,10 @@ func (a *API) Handler() http.Handler {
 	auth("DELETE /api/tasks/{id}", a.deleteTask)
 	auth("POST /api/tasks/{id}/move", a.moveTask)
 	auth("POST /api/tasks/{id}/complete", a.completeTask)
+	auth("POST /api/tasks/{id}/attachments", a.uploadAttachments)
+	open("GET /api/attachments/{id}", a.getAttachment) // session or signed link
+	auth("DELETE /api/attachments/{id}", a.deleteAttachment)
+	auth("POST /api/attachments/{id}/restore", a.restoreAttachment)
 
 	auth("GET /api/search", a.search)
 	auth("GET /api/counts", a.counts)

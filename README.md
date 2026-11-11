@@ -1,6 +1,6 @@
 # Get Done
 
-A fast, self-hosted personal task manager inspired by the original spirit of Todoist, built around the principles of **slow tech** and **minimalism**:
+A fast, self-hosted personal task manager built around the principles of **slow tech** and **minimalism**:
 
 - **Vibe coded:** After using this kind of tool for 4+ years, I needed to create my own, that would do exactly what I wanted, extremely well, without the opportunity cost of learning everything myself in a domain (web dev) where I don't want/need to be an expert.
 - **Zero bloat:** No gamification, no karma, no stress-inducing notifications, no AI, no productivity score dashboards.
@@ -9,6 +9,7 @@ A fast, self-hosted personal task manager inspired by the original spirit of Tod
 - **Deterministic Quick Add:** Instant offline parsing of dates, times, priorities, recurrences and locations, in English and French.
 - **Works offline:** Changes are kept on the device and sent when the connection returns.
 - **Rosé Pine palette:** Moon (dark) and Dawn (light) themes, following the system setting.
+- **Attachments:** Attach a ticket, a photo or any file (25 MB max) to a task; images show as small thumbnails in its details.
 - **Locations:** Add an address or place name to get a one-click Google Maps link.
 - **One binary:** A single Go binary with embedded SQLite and web app, packaged with Nix Flakes (multi-instance NixOS module).
 
@@ -36,7 +37,7 @@ Press `?` in the app to show the cheatsheet.
 | `Esc` | Close, leave a field, clear the selection |
 
 In the sidebar, `j`/`k` browse the projects, `Shift+J`/`Shift+K` reorder them and `Shift+L`/`Shift+H` nest or un-nest them.
-In a task's details, `Enter` edits the title, `a` adds a subtask and `Ctrl+Enter` saves the description.
+In a task's details, `Enter` edits the title, `a` adds a subtask, `f` attaches a file and `Ctrl+Enter` saves the description.
 
 Tasks, sections and projects can also be dragged with the mouse, or with a long press on touch screens.
 Reordering follows the manual order: when a list is sorted by date, priority or title, tasks can still be nested or moved to another section or project, but not reordered. In Upcoming, dropping a task on a day reschedules it, and "Reschedule to today" moves every overdue task to today.

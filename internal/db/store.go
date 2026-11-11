@@ -33,7 +33,8 @@ func invalid(format string, args ...any) error {
 
 // Store is safe for concurrent use.
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	files string // directory of the attachment files, next to the database
 }
 
 // querier is implemented by both *sql.DB and *sql.Tx.
@@ -57,7 +58,7 @@ func Open(path string) (*Store, error) {
 	// manager this costs nothing and rules out "database is locked" errors.
 	sqlDB.SetMaxOpenConns(1)
 
-	s := &Store{db: sqlDB}
+	s := &Store{db: sqlDB, files: filepath.Join(filepath.Dir(path), "attachments")}
 	if err := s.migrate(); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("migrate database: %w", err)
@@ -190,6 +191,21 @@ var migrations = []string{
 		applied_at DATETIME NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_sync_ops_applied ON sync_ops(applied_at);`,
+
+	// 5: files attached to tasks (see attachments.go). No foreign key: a
+	// completed or deleted task keeps its files for a while, so undo brings
+	// them back; the daily purge removes them later.
+	`CREATE TABLE IF NOT EXISTS attachments (
+		id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL,
+		filename TEXT NOT NULL,
+		content_type TEXT NOT NULL,
+		size INTEGER NOT NULL,
+		created_at TEXT NOT NULL,
+		deleted_at TEXT NOT NULL DEFAULT '',
+		orphaned_at TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);`,
 }
 
 func (s *Store) migrate() error {

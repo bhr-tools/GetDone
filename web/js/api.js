@@ -120,6 +120,46 @@ export const api = {
     restore: (tasks, updates) => change('task.restore', { tasks, updates }),
   },
 
+  attachments: {
+    /**
+     * Uploads files to a task; onProgress gets the fraction sent (0 to 1).
+     * Needs the network, and the task on the server: changes still queued
+     * are sent first. The new files reach the local state with the next sync.
+     */
+    async upload(taskId, files, onProgress) {
+      if (engine.pending) await engine.sync();
+      if (engine.pending || navigator.onLine === false) {
+        throw new ApiError('Attaching files needs a connection.', 0);
+      }
+      await new Promise((resolve, reject) => {
+        const form = new FormData();
+        for (const f of files) form.append('file', f, f.name);
+        const xhr = new XMLHttpRequest(); // fetch cannot report upload progress
+        xhr.open('POST', `/api/tasks/${id(taskId)}/attachments`);
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+        xhr.onload = () => {
+          let data = null;
+          try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+          if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+          if (xhr.status === 401) unauthorizedHandler();
+          reject(new ApiError(data?.error || `Upload failed (${xhr.status})`, xhr.status));
+        };
+        xhr.onerror = () => reject(new ApiError('Cannot reach the server. Check your connection.', 0));
+        xhr.send(form);
+      });
+      await engine.sync();
+    },
+    async remove(attId) {
+      await del(`/api/attachments/${id(attId)}`);
+      await engine.sync();
+    },
+    async restore(attId) {
+      await post(`/api/attachments/${id(attId)}/restore`);
+      await engine.sync();
+    },
+  },
+
   /** fields: { project_id } or { new_project } */
   connect: (app, redirectUri, fields) => post('/api/connect', { app, redirect_uri: redirectUri, ...fields }),
   apps: {

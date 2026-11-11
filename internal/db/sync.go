@@ -13,10 +13,12 @@ type Snapshot struct {
 	Projects []*Project `json:"projects"` // inbox included, Children left empty
 	Sections []*Section `json:"sections"`
 	Tasks    []*Task    `json:"tasks"` // Subtasks left empty
+	// Files of the tasks above. Their URL is left for the API to sign.
+	Attachments []Attachment `json:"attachments"`
 }
 
-// Snapshot reads all projects, sections and tasks in one transaction, so the
-// three lists are consistent with each other.
+// Snapshot reads all projects, sections, tasks and attachments in one
+// transaction, so the lists are consistent with each other.
 func (s *Store) Snapshot() (*Snapshot, error) {
 	snap := &Snapshot{Projects: []*Project{}, Sections: []*Section{}}
 	err := s.tx(func(tx *sql.Tx) error {
@@ -53,6 +55,10 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 		}
 
 		snap.Tasks, err = queryTasks(tx, `SELECT `+taskColumns+taskFrom+`ORDER BY t.position, t.created_at`)
+		if err != nil {
+			return err
+		}
+		snap.Attachments, err = listAttachments(tx)
 		return err
 	})
 	return snap, err

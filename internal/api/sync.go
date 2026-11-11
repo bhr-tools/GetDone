@@ -46,6 +46,9 @@ func (a *API) snapshot() (json.RawMessage, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	for i := range snap.Attachments {
+		snap.Attachments[i].URL = a.fileLink(snap.Attachments[i].ID)
+	}
 	body, err := json.Marshal(snap)
 	if err != nil {
 		return nil, "", err

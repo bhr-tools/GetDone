@@ -50,6 +50,7 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 	defer store.Close()
+	go purgeAttachments(store)
 
 	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
 	server := &http.Server{
@@ -76,6 +77,19 @@ func main() {
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
+	}
+}
+
+// purgeAttachments removes, once a day, the files deleted (or whose task was
+// completed or deleted) more than db.AttachmentRetention ago.
+func purgeAttachments(store *db.Store) {
+	for {
+		if n, err := store.PurgeAttachments(time.Now().Add(-db.AttachmentRetention)); err != nil {
+			log.Printf("purge attachments: %v", err)
+		} else if n > 0 {
+			log.Printf("purged %d attachments", n)
+		}
+		time.Sleep(24 * time.Hour)
 	}
 }
 

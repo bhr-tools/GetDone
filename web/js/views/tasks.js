@@ -88,6 +88,11 @@ function taskMeta(task, today, { showProject = false } = {}) {
       title: 'Open in Google Maps',
     }, icon('pin'), h('span', { class: 'badge-text' }, task.location)));
   }
+  const files = task.attachments?.length;
+  if (files) {
+    items.push(h('span', { class: 'badge files', title: files === 1 ? '1 file' : `${files} files` },
+      icon('paperclip'), files > 1 ? String(files) : null));
+  }
   if (showProject && task.project_name) {
     items.push(h('span', { class: 'badge project' },
       icon(task.project_id === 'inbox' ? 'inbox' : 'hash'), h('span', { class: 'badge-text' }, task.project_name)));

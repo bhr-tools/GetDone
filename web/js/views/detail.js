@@ -5,10 +5,11 @@ import { h, icon, autoGrow, isTextInput, mapsUrl } from '../dom.js';
 import { api } from '../api.js';
 import { formatDue, recurrenceLabel, splitDue, WEEKDAYS } from '../dates.js';
 import { parseQuickAdd } from '../quickadd.js';
-import { openModal, openPopover, closePopover, menuList, confirmDialog } from '../ui/overlay.js';
+import { openModal, openPopover, closePopover, menuList, confirmDialog, toast } from '../ui/overlay.js';
 import { datePicker } from '../ui/datepicker.js';
 import { taskRow } from './tasks.js';
 import { PRIORITY_LABELS } from './composer.js';
+import { attachmentsBlock, pickFiles, uploadFiles } from './attachments.js';
 
 const REPEAT_CHOICES = [
   [null, 'Does not repeat'],
@@ -74,6 +75,7 @@ export class TaskDetail {
     this.title = h('textarea', { class: 'detail-title', rows: 1, maxLength: 500, placeholder: 'Task name', attrs: { 'aria-label': 'Task name' } });
     this.chips = h('div', { class: 'token-chips', hidden: true });
     this.description = h('textarea', { class: 'detail-description', placeholder: 'Description', attrs: { 'aria-label': 'Description' } });
+    this.files = h('div');
 
     this.subtaskList = h('div', { class: 'task-list compact' });
     this.subtaskCount = h('span', { class: 'group-count' });
@@ -123,6 +125,7 @@ export class TaskDetail {
           h('div', { class: 'detail-title-row' }, this.check, this.title),
           this.chips,
           this.description,
+          this.files,
           h('section', { class: 'detail-subtasks' },
             h('header', { class: 'group-header' }, h('h3', { class: 'group-title' }, 'Subtasks'), this.subtaskCount),
             this.subtaskList,
@@ -141,6 +144,7 @@ export class TaskDetail {
       },
     });
     this.modal.el.addEventListener('keydown', (e) => this.onKey(e));
+    this.enableFileDrop(this.modal.el);
     enableSheetGestures(this.modal.el, handle, () => this.close());
   }
 
@@ -158,6 +162,7 @@ export class TaskDetail {
     });
     this.check.className = `task-check large p${t.priority}`;
     this.renderBack();
+    this.renderFiles();
     this.renderSubtasks();
     this.renderFields();
   }
@@ -188,6 +193,65 @@ export class TaskDetail {
     if (!t.section_id) return;
     const section = (await this.app.sectionsOf(t.project_id)).find((s) => s.id === t.section_id);
     if (section && this.task === t) this.place.append(` › ${section.name}`);
+  }
+
+  renderFiles() {
+    this.files.replaceChildren(attachmentsBlock(this.task, {
+      onAttach: () => this.attach(),
+      onRemove: (a) => this.removeFile(a),
+    }));
+  }
+
+  attach() {
+    const id = this.task.id;
+    pickFiles((files) => this.upload(id, files));
+  }
+
+  async upload(taskId, files) {
+    if (await uploadFiles(taskId, files, (err) => this.app.reportError(err)) && this.task?.id === taskId) this.reload();
+  }
+
+  async removeFile(a) {
+    try {
+      await api.attachments.remove(a.id);
+    } catch (err) {
+      this.app.reportError(err);
+      return;
+    }
+    if (this.task?.id === a.task_id) this.reload();
+    toast(`Removed ${a.filename}`, {
+      action: {
+        label: 'Undo',
+        run: () => api.attachments.restore(a.id).then(() => this.task?.id === a.task_id && this.reload(), (err) => this.app.reportError(err)),
+      },
+    });
+  }
+
+  /** Files dropped on the details, or an image pasted outside a text field, are attached. */
+  enableFileDrop(el) {
+    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    el.addEventListener('dragover', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      el.classList.add('file-over');
+    });
+    el.addEventListener('dragleave', (e) => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove('file-over');
+    });
+    el.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      el.classList.remove('file-over');
+      const files = [...e.dataTransfer.files];
+      if (files.length && this.task) this.upload(this.task.id, files);
+    });
+    el.addEventListener('paste', (e) => {
+      if (isTextInput(e.target) || !this.task) return;
+      const files = [...(e.clipboardData?.files || [])];
+      if (!files.length) return;
+      e.preventDefault();
+      this.upload(this.task.id, files);
+    });
   }
 
   renderSubtasks() {
@@ -475,6 +539,9 @@ export class TaskDetail {
     } else if (e.key === 'a') {
       e.preventDefault();
       this.subtaskInput.focus();
+    } else if (e.key === 'f') {
+      e.preventDefault();
+      this.attach();
     }
   }
 }

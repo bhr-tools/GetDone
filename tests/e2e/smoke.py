@@ -14,6 +14,17 @@ PASSWORD = "correct horse"
 errors = []
 
 
+def tiny_png():
+    """A valid 2x2 PNG, so the thumbnail really renders."""
+    import struct, zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    raw = b"".join(b"\x00" + b"\x31\x9c\x8f" * 2 for _ in range(2))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 def watch(page):
     # The wrong-password check below answers 401 on purpose.
     page.on("console", lambda m: m.type in ("error", "warning") and "401" not in m.text
@@ -148,9 +159,27 @@ def desktop(browser):
     page.keyboard.press("Enter")
     page.wait_for_timeout(400)
     expect(page.locator(".detail-subtasks .task-row")).to_have_count(1)
+    # Attachments: a photo shows as a thumbnail, a PDF as a chip.
+    with page.expect_file_chooser() as fc:
+        page.locator(".file-add").click()
+    fc.value.set_files([
+        {"name": "ticket.png", "mimeType": "image/png", "buffer": tiny_png()},
+        {"name": "agenda.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4\n%%EOF\n"},
+    ])
+    expect(page.locator(".file-thumb img")).to_have_count(1)
+    expect(page.locator(".file-chip")).to_contain_text("agenda.pdf")
+    expect(page.locator(".file-thumb img")).to_have_js_property("naturalWidth", 2)
+    shot(page, "d08b-attachments")
+    page.locator(".file-chip").hover()
+    page.locator(".file-item", has=page.locator(".file-chip")).locator(".file-remove").click()
+    expect(page.locator(".file-chip")).to_have_count(0)
+    page.locator(".toast-action", has_text="Undo").click()
+    expect(page.locator(".file-chip")).to_have_count(1)
+    page.locator(".detail-title").click()
     page.keyboard.press("Escape")
     page.keyboard.press("Escape")
     expect(page.locator(".detail")).to_have_count(0)
+    expect(page.locator("#tasks .task-row", has_text="Prepare").locator(".badge.files")).to_contain_text("2")
     # The time survived opening and closing the panel.
     expect(page.locator("#tasks .task-row", has_text="Prepare").locator(".badge.due")).to_contain_text("09:00")
 

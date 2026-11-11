@@ -1,9 +1,12 @@
 // Local state of the app, rebuilt from the server snapshot, and the read
 // functions (the views) that replace the GET calls when working offline.
 //
-// State: { projects: { [id]: Project }, sections: { [id]: Section }, tasks: { [id]: Task } }
+// State: { projects: { [id]: Project }, sections: { [id]: Section }, tasks: { [id]: Task },
+//          attachments: { [taskId]: Attachment[] } }
 // Records are flat: no children / subtasks arrays, and project_name is not
 // stored (it is computed from projects, so a rename shows everywhere at once).
+// Attachments are only changed online; they stay indexed by task id when a
+// task is completed, so an undo shows them again.
 // Every read function returns new objects: callers may modify them freely.
 
 import { ApiError } from '../errors.js';
@@ -16,6 +19,7 @@ export const EMPTY = {
   projects: [{ id: 'inbox', parent_id: null, name: 'Inbox', position: 0, sort_by: 'manual', created_at: '1970-01-01T00:00:00Z' }],
   sections: [],
   tasks: [],
+  attachments: [],
 };
 
 const UPCOMING_DAYS = 7;
@@ -23,7 +27,7 @@ const SEARCH_LIMIT = 50;
 
 /** Turns a server snapshot into the local state. */
 export function fromSnapshot(snap) {
-  const state = { projects: {}, sections: {}, tasks: {} };
+  const state = { projects: {}, sections: {}, tasks: {}, attachments: {} };
   for (const p of snap.projects) {
     delete p.children;
     state.projects[p.id] = p;
@@ -34,6 +38,7 @@ export function fromSnapshot(snap) {
     delete t.project_name;
     state.tasks[t.id] = t;
   }
+  for (const a of snap.attachments ?? []) (state.attachments[a.task_id] ??= []).push(a);
   return state;
 }
 
@@ -60,9 +65,14 @@ export function siblingsOf(state, slot, excludeId = '') {
     .map((t) => t.id);
 }
 
-/** Task as the API returns it: with its project name and an empty subtask list. */
+/** Task as the API returns it: with its project name, its files and an empty subtask list. */
 export function taskOut(state, t) {
-  return { ...t, project_name: state.projects[t.project_id]?.name ?? '', subtasks: [] };
+  return {
+    ...t,
+    project_name: state.projects[t.project_id]?.name ?? '',
+    attachments: (state.attachments?.[t.id] ?? []).map((a) => ({ ...a })),
+    subtasks: [],
+  };
 }
 
 function projectOut(p) {

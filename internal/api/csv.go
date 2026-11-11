@@ -16,14 +16,14 @@ import (
 	"github.com/ben/get-done/internal/parser"
 )
 
-// Todoist's CSV template columns.
+// CSV columns, one row per task or section.
 var csvHeader = []string{"TYPE", "CONTENT", "DESCRIPTION", "PRIORITY", "INDENT", "AUTHOR", "RESPONSIBLE", "DATE", "DATE_LANG", "TIMEZONE"}
 
-// Locations have no Todoist column; they travel in the description.
+// Locations have no column of their own; they travel in the description.
 const locationPrefix = "Location: "
 
-// In Todoist CSV files, PRIORITY 1 is the highest and 4 the lowest ("normal").
-var todoistPriority = map[int]string{1: "1", 2: "2", 3: "4"}
+// In the CSV, PRIORITY 1 is the highest and 4 the lowest ("normal").
+var csvPriority = map[int]string{1: "1", 2: "2", 3: "4"}
 
 func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
@@ -52,7 +52,7 @@ func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 	_ = out.Write(csvHeader)
 	var writeTree func(t *db.Task, indent int)
 	writeTree = func(t *db.Task, indent int) {
-		_ = out.Write([]string{"task", t.Title, exportDescription(t), todoistPriority[t.Priority],
+		_ = out.Write([]string{"task", t.Title, exportDescription(t), csvPriority[t.Priority],
 			strconv.Itoa(indent), "", "", exportDate(t), "en", ""})
 		for _, sub := range t.Subtasks {
 			writeTree(sub, indent+1)
@@ -94,7 +94,7 @@ func exportDescription(t *db.Task) string {
 	return t.Description + "\n" + locationPrefix + *t.Location
 }
 
-// exportDate writes the due date and recurrence in Todoist's natural syntax,
+// exportDate writes the due date and recurrence in natural syntax,
 // which the importer below reads back.
 func exportDate(t *db.Task) string {
 	if t.Recurrence == nil {
@@ -113,7 +113,7 @@ func exportDate(t *db.Task) string {
 	case strings.HasPrefix(rule, "weekly:"):
 		text = "every " + strings.TrimPrefix(rule, "weekly:")
 	default:
-		text = rule // cron rules have no Todoist equivalent
+		text = rule // cron rules are written as they are
 	}
 	if t.DueDate != nil {
 		day, clock, _ := strings.Cut(*t.DueDate, " ")
@@ -190,7 +190,7 @@ func readUpload(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
 
-// decodeCSV parses a Todoist CSV (comma, semicolon or tab separated, with or
+// decodeCSV parses a task CSV (comma, semicolon or tab separated, with or
 // without a UTF-8 BOM) into import rows.
 func decodeCSV(data []byte, today string) ([]db.ImportRow, error) {
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
@@ -273,7 +273,7 @@ func splitLocation(desc string) (string, *string) {
 	return strings.TrimSpace(strings.Join(kept, "\n")), location
 }
 
-// importDate reads a Todoist DATE cell such as "2026-11-01", "tomorrow 9am"
+// importDate reads a DATE cell such as "2026-11-01", "tomorrow 9am"
 // or "every monday starting 2026-11-02 at 09:00".
 func importDate(cell, today string) (due, recurrence *string) {
 	if cell == "" {

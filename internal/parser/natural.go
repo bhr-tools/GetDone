@@ -9,7 +9,7 @@ import (
 )
 
 // Natural-language extraction (English and French), used to read the DATE
-// column of Todoist CSV files. The interactive quick add is parsed in the
+// column of imported CSV files. The interactive quick add is parsed in the
 // browser (web/js/quickadd.js) with the same vocabulary.
 
 const monthPattern = `january|janvier|janv|jan|february|f[eé]vrier|f[eé]vr|f[eé]v|feb|march|mars|mar|april|avril|avr|apr|may|mai|june|juin|jun|july|juillet|juil|jul|august|ao[uû]t|aug|september|septembre|sept|sep|october|octobre|oct|november|novembre|nov|december|d[eé]cembre|d[eé]c|dec`

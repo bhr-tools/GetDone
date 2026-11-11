@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// ImportRow is one decoded line of a Todoist CSV file.
+// ImportRow is one decoded line of an imported CSV file.
 type ImportRow struct {
 	Type        string // task | section | note
 	Content     string

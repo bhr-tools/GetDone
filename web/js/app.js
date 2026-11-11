@@ -10,11 +10,40 @@ import { renderTasks, renderWeekStrip } from './views/tasks.js';
 import { renderSidebar, sidebarRows } from './views/sidebar.js';
 import { TaskDetail } from './views/detail.js';
 import { initDragAndDrop } from './dnd.js';
+import { listGaps, nearestGap, pickDepth, resolveDrop } from './dropgaps.js';
 import { initKeys } from './keys.js';
 
 const SORT_LABELS = { manual: 'Manual order', date: 'Due date', priority: 'Priority', title: 'Alphabetical' };
 const UNDO_LIMIT = 50;
 const $ = (id) => document.getElementById(id);
+
+// Indentation of one nesting level, in px (.subtasks and .project-children in style.css).
+const TASK_INDENT = 28;
+const PROJECT_INDENT = 20;
+
+/** Nesting depth of el inside root: how many `cls` containers it is in. */
+function depthIn(el, root, cls) {
+  let depth = 0;
+  for (let p = el.parentElement; p && p !== root; p = p.parentElement) {
+    if (p.classList.contains(cls)) depth++;
+  }
+  return depth;
+}
+
+/** Rows as drop gaps see them: geometry and depth, without the dragged subtree. */
+function gapRows(els, root, cls, excluded) {
+  return [...els].filter((el) => !excluded.contains(el)).map((el) => {
+    const r = el.getBoundingClientRect();
+    return { id: el.dataset.id, depth: depthIn(el, root, cls), top: r.top, bottom: r.bottom };
+  });
+}
+
+/** The before_id / after_id of a gap target ({} when it becomes the only child). */
+function placementOf(target) {
+  if (target.afterId) return { after_id: target.afterId };
+  if (target.beforeId) return { before_id: target.beforeId };
+  return {};
+}
 
 class App {
   constructor() {
@@ -720,21 +749,16 @@ class App {
   }
 
   /**
-   * Interprets the position of a dragged item. Returns
-   * { el, place: 'before' | 'after' | 'inside' | 'into', ...data } or null.
+   * Interprets the position of a dragged item. pull is how far it was moved
+   * right since the drag started (it picks the nesting depth); previous is
+   * the last target. Returns null, an element to highlight
+   * { el, place: 'before' | 'after' | 'into', ...data }, or a line in a gap
+   * { line: { left, top, width }, place: 'gap', depth, parentId, beforeId?, afterId?, ... }.
    */
-  dropTarget(kind, id, under, x, y) {
+  dropTarget(kind, id, under, x, y, pull = 0, previous = null) {
     const s = this.state;
     if (kind === 'project') {
-      const row = under.closest('.project-row[data-drop="project"]');
-      if (row) {
-        if (row.dataset.id === id || this.isProjectInside(row.dataset.id, id)) return null;
-        const r = row.getBoundingClientRect();
-        if (x - r.left > r.width * 0.6) return { el: row, place: 'inside', projectId: row.dataset.id };
-        return { el: row, place: y < r.top + r.height / 2 ? 'before' : 'after', projectId: row.dataset.id };
-      }
-      const tree = under.closest('#project-tree');
-      return tree ? { el: tree, place: 'into', projectId: null } : null;
+      return under.closest('#project-tree') ? this.projectGap(id, y, pull, previous) : null;
     }
 
     if (kind === 'section') {
@@ -754,39 +778,61 @@ class App {
     const project = under.closest('.project-row[data-drop="project"]');
     if (project) return { el: project, place: 'into', projectId: project.dataset.id };
 
-    const row = under.closest('#tasks .task-row[data-drop="task"]');
-    if (row) {
-      const task = this.findTask(row.dataset.id);
-      if (!task || task.id === id || this.isTaskInside(task.id, id)) return null;
-      if (s.view === 'upcoming') {
-        const list = row.closest('[data-drop="list"]');
-        return list?.dataset.date ? { el: list, place: 'into', date: list.dataset.date } : null;
-      }
-      const r = row.getBoundingClientRect();
-      if (x - r.left > r.width * (isMobile() ? 0.6 : 0.3)) return { el: row, place: 'inside', taskId: task.id };
-      if (this.currentSort() !== 'manual') {
-        const list = row.closest('.task-list[data-drop="list"]');
-        return list ? this.listTarget(list) : null;
-      }
-      return { el: row, place: y < r.top + r.height / 2 ? 'before' : 'after', taskId: task.id };
+    if (s.view === 'upcoming') {
+      const day = under.closest('#tasks [data-drop="list"][data-date]');
+      return day ? { el: day, place: 'into', date: day.dataset.date } : null;
     }
-    const list = under.closest('#tasks [data-drop="list"]');
-    return list ? this.listTarget(list) : null;
+    return under.closest('.main') ? this.taskGap(id, y, pull, previous) : null;
   }
 
-  listTarget(list) {
-    if (list.dataset.date) return { el: list, place: 'into', date: list.dataset.date };
-    return { el: list, place: 'into', projectId: list.dataset.projectId, sectionId: list.dataset.sectionId || null };
+  /** The gap line for a task: in any list of the view, at any depth allowed there. */
+  taskGap(id, y, pull, previous) {
+    const source = document.querySelector(`#tasks .task-row[data-id="${CSS.escape(id)}"]`);
+    if (!source) return null;
+    const subtree = source.parentElement.classList.contains('task-tree') && source.parentElement.firstElementChild === source
+      ? source.parentElement : source;
+    let best = null;
+    for (const list of document.querySelectorAll('#tasks .task-list[data-drop="list"]')) {
+      const rows = gapRows(list.querySelectorAll('.task-row[data-drop="task"]'), list, 'subtasks', subtree);
+      const box = list.getBoundingClientRect();
+      const gap = nearestGap(listGaps(rows, box.top + box.height / 2), y);
+      if (gap && (!best || Math.abs(gap.y - y) < Math.abs(best.gap.y - y))) best = { list, rows, gap, box };
+    }
+    if (!best) return null;
+    const { list, rows, gap, box } = best;
+    const raw = depthIn(source, list, 'subtasks') + pull / TASK_INDENT;
+    const depth = pickDepth(raw, gap, previous?.place === 'gap' && previous.list === list ? previous.depth : null);
+    const left = box.left + depth * TASK_INDENT - 6;
+    return {
+      place: 'gap', list, depth,
+      line: { left, top: gap.y - 1, width: box.right - left },
+      projectId: list.dataset.projectId, sectionId: list.dataset.sectionId || null,
+      ...resolveDrop(rows, gap.index, depth),
+    };
+  }
+
+  /** The gap line for a project in the sidebar tree. */
+  projectGap(id, y, pull, previous) {
+    const tree = $('project-tree');
+    const source = tree.querySelector(`.project-row[data-id="${CSS.escape(id)}"]`);
+    if (!source) return null;
+    const rows = gapRows(tree.querySelectorAll('.project-row[data-drop="project"]'), tree, 'project-children', source.closest('.project-node'));
+    const box = tree.getBoundingClientRect();
+    const gap = nearestGap(listGaps(rows, box.top + 8), y);
+    const sourceDepth = depthIn(source, tree, 'project-children');
+    const depth = pickDepth(sourceDepth + pull / PROJECT_INDENT, gap, previous?.place === 'gap' ? previous.depth : null);
+    const base = source.getBoundingClientRect().left - sourceDepth * PROJECT_INDENT;
+    const left = base + depth * PROJECT_INDENT;
+    return {
+      place: 'gap', depth,
+      line: { left, top: gap.y - 1, width: box.right - 8 - left },
+      ...resolveDrop(rows, gap.index, depth),
+    };
   }
 
   async drop(kind, id, target) {
     if (kind === 'project') {
-      if (target.place === 'inside') await this.run(() => api.projects.move(id, target.projectId));
-      else if (target.place === 'into') await this.run(() => api.projects.move(id, null));
-      else {
-        const p = this.findProject(target.projectId);
-        await this.run(() => api.projects.move(id, p.parent_id, { [`${target.place}_id`]: p.id }));
-      }
+      await this.run(() => api.projects.move(id, target.parentId, placementOf(target)));
       await this.loadProjects();
       this.render();
       return;
@@ -807,11 +853,9 @@ class App {
     const s = this.state;
     const ids = s.selection.has(id) ? this.targetIds() : [id];
     if (target.date) return this.rescheduleTasks(ids, target.date);
-    if (target.place === 'inside') return this.moveTasks(ids, { parent_id: target.taskId });
-    if (target.place === 'before' || target.place === 'after') {
-      const ref = this.findTask(target.taskId);
+    if (target.place === 'gap') {
       return this.moveTasks(ids, {
-        project_id: ref.project_id, section_id: ref.section_id, parent_id: ref.parent_id, [`${target.place}_id`]: ref.id,
+        project_id: target.projectId, section_id: target.sectionId, parent_id: target.parentId, ...placementOf(target),
       });
     }
     await this.moveTasks(ids, { project_id: target.projectId, section_id: target.sectionId || null });
@@ -819,16 +863,6 @@ class App {
       const name = target.projectId === 'inbox' ? 'Inbox' : this.findProject(target.projectId)?.name;
       toast(`${ids.length === 1 ? 'Task' : `${ids.length} tasks`} moved to ${name}`);
     }
-  }
-
-  isTaskInside(taskId, ancestorId) {
-    const ancestor = this.findTask(ancestorId);
-    return !!ancestor && !!this.findTask(taskId, ancestor.subtasks || []);
-  }
-
-  isProjectInside(projectId, ancestorId) {
-    const ancestor = this.findProject(ancestorId);
-    return !!ancestor && !!this.findProject(projectId, ancestor.children || []);
   }
 
   // -------------------------------------------------------------------------

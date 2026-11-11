@@ -1,7 +1,10 @@
 // Drag and drop for tasks, sections and projects, with the mouse or by
 // long-pressing on touch screens. Draggable elements carry data-drag
 // ("task" | "section" | "project") and data-id; the app decides what a drop
-// position means (see App.dropTarget / App.drop).
+// position means (see App.dropTarget / App.drop). A target is either an
+// element to highlight (a project in the sidebar, a day) or a line drawn in
+// a gap between rows: one indicator, with a dot, indented to the depth the
+// item will have.
 
 const MOUSE_THRESHOLD = 5; // px before a mouse press becomes a drag
 const LONG_PRESS = 300;    // ms before a touch becomes a drag
@@ -12,8 +15,12 @@ const IGNORE = 'button, a, input, textarea, select, .task-check';
 
 export function initDragAndDrop(app) {
   let pending = null; // { el, x, y, timer }
-  let drag = null;    // { kind, id, source, ghost, offsetX, offsetY, target }
+  let drag = null;    // { kind, id, source, ghost, offsetX, offsetY, originLeft, target, x, y }
   let suppressClickUntil = 0;
+  const line = document.createElement('div');
+  line.className = 'drop-line';
+  line.hidden = true;
+  document.body.append(line);
 
   const start = (el, x, y) => {
     const rect = el.getBoundingClientRect();
@@ -23,27 +30,49 @@ export function initDragAndDrop(app) {
     document.body.append(ghost);
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
-    drag = { kind: el.dataset.drag, id: el.dataset.id, source: el, ghost, offsetX: x - rect.left, offsetY: y - rect.top, target: null };
+    drag = {
+      kind: el.dataset.drag, id: el.dataset.id, source: el, ghost,
+      offsetX: x - rect.left, offsetY: y - rect.top, originLeft: rect.left, target: null,
+    };
     app.closeTransientUi();
   };
 
   const move = (x, y) => {
+    drag.x = x;
+    drag.y = y;
     drag.ghost.style.left = `${x - drag.offsetX}px`;
     drag.ghost.style.top = `${y - drag.offsetY}px`;
     autoScroll(x, y);
+    locate();
+  };
+
+  // Finds the target under the pointer; also run when the page scrolls.
+  const locate = () => {
+    const { x, y } = drag;
     const under = document.elementFromPoint(x, y);
-    const target = under ? app.dropTarget(drag.kind, drag.id, under, x, y) : null;
-    if (drag.target?.el !== target?.el || drag.target?.place !== target?.place) {
-      drag.target?.el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-into');
-      target?.el.classList.add(`drop-${target.place}`);
+    // How far the item was pulled right (or left) since the drag started.
+    const pull = x - drag.offsetX - drag.originLeft;
+    const target = under ? app.dropTarget(drag.kind, drag.id, under, x, y, pull, drag.target) : null;
+    const oldEl = drag.target?.line ? null : drag.target?.el;
+    const newEl = target?.line ? null : target?.el;
+    if (oldEl !== newEl || drag.target?.place !== target?.place) {
+      oldEl?.classList.remove('drop-before', 'drop-after', 'drop-into');
+      newEl?.classList.add(`drop-${target.place}`);
     }
+    showLine(target?.line);
     drag.target = target;
+  };
+
+  const showLine = (pos) => {
+    line.hidden = !pos;
+    if (pos) Object.assign(line.style, { left: `${pos.left}px`, top: `${pos.top}px`, width: `${pos.width}px` });
   };
 
   const finish = (commit) => {
     if (drag) {
       const { kind, id, target, source, ghost } = drag;
-      target?.el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-into');
+      target?.el?.classList.remove('drop-before', 'drop-after', 'drop-into');
+      showLine(null);
       source.classList.remove('dragging');
       ghost.remove();
       document.body.classList.remove('is-dragging');
@@ -116,6 +145,9 @@ export function initDragAndDrop(app) {
   document.addEventListener('contextmenu', (e) => {
     if (drag || pending) e.preventDefault(); // long press must not open the menu
   });
+
+  // Auto-scroll (or a wheel) moves the rows under a still pointer.
+  document.addEventListener('scroll', () => drag && locate(), true);
 
   // A drag ends with a click on the element under the pointer: swallow it.
   document.addEventListener('click', (e) => {

@@ -129,6 +129,17 @@ def desktop(browser):
     page.wait_for_timeout(500)
     expect(rows.nth(0).locator(".task-title")).to_have_text("Book meeting room")
 
+    # Nest by pulling right in the gap under a task, then pull back left.
+    prepare = page.locator("#tasks .task-row", has_text="Prepare the quarterly review")
+    book = page.locator("#tasks .task-row", has_text="Book meeting room").bounding_box()
+    pull(page, prepare, 40, book["y"] + book["height"] + 1, shot_name="d07b-nest-line")
+    expect(page.locator("#tasks .subtasks .task-row", has_text="Prepare")).to_have_count(1)
+    expect(page.locator(".drop-line")).to_be_hidden()
+    nested = page.locator("#tasks .task-row", has_text="Prepare").bounding_box()
+    pull(page, page.locator("#tasks .task-row", has_text="Prepare"), -40, nested["y"] + nested["height"] + 1)
+    expect(page.locator("#tasks .subtasks .task-row")).to_have_count(0)
+    expect(rows.nth(1).locator(".task-title")).to_have_text("Prepare the quarterly review")
+
     # Drag a task into the Ideas section.
     src = rows.nth(0).bounding_box()
     target = page.locator('.task-list[data-section-id]:not([data-section-id=""])').first
@@ -255,6 +266,21 @@ def phone(browser):
     ctx.close()
 
 
+def pull(page, source, dx, y, shot_name=None):
+    """Drags source dx pixels sideways to the gap at y (Todoist-style nesting)."""
+    s = source.bounding_box()
+    x0, y0 = s["x"] + 60, s["y"] + s["height"] / 2
+    page.mouse.move(x0, y0)
+    page.mouse.down()
+    page.mouse.move(x0 + 2, y0 + 10, steps=4)
+    page.mouse.move(x0 + dx, y, steps=10)
+    expect(page.locator(".drop-line")).to_be_visible()
+    if shot_name:
+        shot(page, shot_name)
+    page.mouse.up()
+    page.wait_for_timeout(500)
+
+
 def drag(page, source, target, dx=60, dy=None):
     """Drags source onto target (dy: offset from target's top; default middle)."""
     s = source.bounding_box()
@@ -355,7 +381,8 @@ def workflows(browser):
     page.get_by_role("button", name="Create", exact=True).click()
     expect(page.locator("#view-title")).to_have_text("Clients")
     work = page.locator(".project-row", has_text="Work")
-    drag(page, page.locator(".project-row", has_text="Clients"), work, dx=work.bounding_box()["width"] - 20)
+    w = work.bounding_box()
+    pull(page, page.locator(".project-row", has_text="Clients"), 30, w["y"] + w["height"] + 1)
     expect(page.locator(".project-children .project-row", has_text="Clients")).to_have_count(1)
     shot(page, "w04-dark-nested-projects")
 

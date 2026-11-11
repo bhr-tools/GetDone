@@ -39,7 +39,7 @@ Press `?` in the app to show the cheatsheet.
 In the sidebar, `j`/`k` browse the projects, `Shift+J`/`Shift+K` reorder them and `Shift+L`/`Shift+H` nest or un-nest them.
 In a task's details, `Enter` edits the title, `a` adds a subtask, `f` attaches a file and `Ctrl+Enter` saves the description.
 
-Tasks, sections and projects can also be dragged with the mouse, or with a long press on touch screens.
+Tasks, sections and projects can also be dragged with the mouse, or with a long press on touch screens. While dragging a task or a project, a line with a dot shows where it will land, in the gap between two rows; pull the item right to nest it under the row above (as its first or next subtask), or left to take it out of its parent.
 Reordering follows the manual order: when a list is sorted by date, priority or title, tasks can still be nested or moved to another section or project, but not reordered. In Upcoming, dropping a task on a day reschedules it, and "Reschedule to today" moves every overdue task to today.
 
 ## Quick Add syntax

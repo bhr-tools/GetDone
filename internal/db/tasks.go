@@ -387,6 +387,7 @@ func shiftDescendantDates(q querier, id string, days int) error {
 // subtask and ProjectID/SectionID are taken from the parent. With AfterID set,
 // it is inserted right after that sibling instead of at the end.
 type NewTask struct {
+	ID          string  `json:"id"` // optional: a UUID chosen by the client
 	ProjectID   string  `json:"project_id"`
 	SectionID   *string `json:"section_id"`
 	ParentID    *string `json:"parent_id"`
@@ -426,7 +427,10 @@ func (s *Store) CreateTask(in NewTask) (*Task, error) {
 		return nil, err
 	}
 
-	id := newID()
+	id, err := clientID(in.ID)
+	if err != nil {
+		return nil, err
+	}
 	err = s.tx(func(tx *sql.Tx) error {
 		sl, err := resolveSlot(tx, strings.TrimSpace(in.ProjectID), clean(in.SectionID), clean(in.ParentID))
 		if err != nil {

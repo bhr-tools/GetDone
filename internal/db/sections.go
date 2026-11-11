@@ -62,7 +62,7 @@ func requireSectionProject(q querier, projectID string, sectionID *string) error
 }
 
 // CreateSection adds a section at the end of a project.
-func (s *Store) CreateSection(projectID, name string) (*Section, error) {
+func (s *Store) CreateSection(id, projectID, name string) (*Section, error) {
 	name, err := normalizeName(name, "Section")
 	if err != nil {
 		return nil, err
@@ -70,7 +70,10 @@ func (s *Store) CreateSection(projectID, name string) (*Section, error) {
 	if projectID == InboxID {
 		return nil, invalid("the inbox has no sections")
 	}
-	id := newID()
+	id, err = clientID(id)
+	if err != nil {
+		return nil, err
+	}
 	err = s.tx(func(tx *sql.Tx) error {
 		if err := requireSectionProject(tx, projectID, nil); err != nil {
 			return err

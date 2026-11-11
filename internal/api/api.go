@@ -73,6 +73,8 @@ func (a *API) Handler() http.Handler {
 
 	auth("GET /api/search", a.search)
 	auth("GET /api/counts", a.counts)
+	auth("GET /api/sync", a.getSync)
+	auth("POST /api/sync", a.postSync)
 
 	// Connected apps (see connect.go).
 	auth("POST /api/connect", a.connect)

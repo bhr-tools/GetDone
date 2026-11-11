@@ -37,7 +37,7 @@ func (a *API) createProject(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	p, err := a.store.CreateProject(req.Name, req.ParentID)
+	p, err := a.store.CreateProject("", req.Name, req.ParentID)
 	if err != nil {
 		fail(w, r, err)
 		return
@@ -123,7 +123,7 @@ func (a *API) createSection(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	sec, err := a.store.CreateSection(req.ProjectID, req.Name)
+	sec, err := a.store.CreateSection("", req.ProjectID, req.Name)
 	if err != nil {
 		fail(w, r, err)
 		return

@@ -84,8 +84,9 @@ func getProject(q querier, id string) (*Project, error) {
 	return p, err
 }
 
-// CreateProject adds a project at the end of its parent's children.
-func (s *Store) CreateProject(name string, parentID *string) (*Project, error) {
+// CreateProject adds a project at the end of its parent's children. id is
+// optional: a UUID chosen by the client.
+func (s *Store) CreateProject(id, name string, parentID *string) (*Project, error) {
 	name, err := normalizeName(name, "Project")
 	if err != nil {
 		return nil, err
@@ -93,7 +94,10 @@ func (s *Store) CreateProject(name string, parentID *string) (*Project, error) {
 	if parentID != nil && (*parentID == "" || *parentID == InboxID) {
 		parentID = nil
 	}
-	id := newID()
+	id, err = clientID(id)
+	if err != nil {
+		return nil, err
+	}
 	err = s.tx(func(tx *sql.Tx) error {
 		if parentID != nil {
 			if _, err := getProject(tx, *parentID); err != nil {

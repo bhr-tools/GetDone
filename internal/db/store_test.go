@@ -24,7 +24,7 @@ func str(s string) *string { return &s }
 
 func mustProject(t *testing.T, s *Store, name string, parent *string) *Project {
 	t.Helper()
-	p, err := s.CreateProject(name, parent)
+	p, err := s.CreateProject("", name, parent)
 	if err != nil {
 		t.Fatalf("CreateProject(%q): %v", name, err)
 	}
@@ -33,7 +33,7 @@ func mustProject(t *testing.T, s *Store, name string, parent *string) *Project {
 
 func mustSection(t *testing.T, s *Store, projectID, name string) *Section {
 	t.Helper()
-	sec, err := s.CreateSection(projectID, name)
+	sec, err := s.CreateSection("", projectID, name)
 	if err != nil {
 		t.Fatalf("CreateSection(%q): %v", name, err)
 	}
@@ -254,7 +254,7 @@ func TestCreateValidation(t *testing.T) {
 	if _, err := s.CreateTask(NewTask{Title: "x", SectionID: &sec.ID}); !isInvalid(err) {
 		t.Error("a section of another project must be rejected")
 	}
-	if _, err := s.CreateSection(InboxID, "S"); !isInvalid(err) {
+	if _, err := s.CreateSection("", InboxID, "S"); !isInvalid(err) {
 		t.Error("the inbox has no sections")
 	}
 }
@@ -522,5 +522,20 @@ func TestMigrationRepairsLegacyData(t *testing.T) {
 	}
 	if s.ValidateSession("plain-token") {
 		t.Error("unhashed sessions must be dropped")
+	}
+}
+
+func TestClientIDs(t *testing.T) {
+	s := openTest(t)
+	id := "6f1c1b3e-5a0e-4a53-9d0e-0b6f7a8f2c11"
+	task := mustTask(t, s, NewTask{ID: id, ProjectID: InboxID, Title: "T"})
+	if task.ID != id {
+		t.Fatalf("task id %q, want %q", task.ID, id)
+	}
+	if _, err := s.CreateTask(NewTask{ID: "x", ProjectID: InboxID, Title: "T"}); !isInvalid(err) {
+		t.Fatalf("bad id: err = %v, want a validation error", err)
+	}
+	if p := mustProject(t, s, "P", nil); p.ID == "" {
+		t.Fatal("CreateProject(\"\") did not generate an id")
 	}
 }

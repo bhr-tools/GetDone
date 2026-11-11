@@ -69,7 +69,7 @@ func (a *API) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	project := req.ProjectID
 	if project == "" {
-		p, err := a.store.CreateProject(req.NewProject, nil)
+		p, err := a.store.CreateProject("", req.NewProject, nil)
 		if err != nil {
 			fail(w, r, err)
 			return

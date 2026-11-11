@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -179,6 +180,16 @@ var migrations = []string{
 		created_at DATETIME NOT NULL,
 		used_at DATETIME
 	);`,
+
+	// 4: changes applied by the offline sync (see sync.go), so that a change
+	// sent twice is applied once.
+	`CREATE TABLE IF NOT EXISTS sync_ops (
+		id TEXT PRIMARY KEY,
+		status TEXT NOT NULL,
+		error TEXT NOT NULL DEFAULT '',
+		applied_at DATETIME NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_sync_ops_applied ON sync_ops(applied_at);`,
 }
 
 func (s *Store) migrate() error {
@@ -205,6 +216,20 @@ func (s *Store) migrate() error {
 
 func newID() string {
 	return uuid.NewString()
+}
+
+// clientID returns id when it is a UUID chosen by a client (offline
+// creation), or a new id when id is empty.
+func clientID(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return newID(), nil
+	}
+	u, err := uuid.Parse(id)
+	if err != nil {
+		return "", invalid("invalid id")
+	}
+	return u.String(), nil
 }
 
 func now() time.Time {

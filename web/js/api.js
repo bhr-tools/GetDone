@@ -2,13 +2,9 @@
 // throws an ApiError whose message can be shown to the user.
 
 import { todayISO } from './dates.js';
+import { ApiError } from './errors.js';
 
-export class ApiError extends Error {
-  constructor(message, status) {
-    super(message);
-    this.status = status;
-  }
-}
+export { ApiError };
 
 let unauthorizedHandler = () => {};
 

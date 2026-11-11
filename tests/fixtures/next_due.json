@@ -1,0 +1,264 @@
+{
+ "due_valid": [
+  {
+   "due": "2026-02-28",
+   "valid": true
+  },
+  {
+   "due": "2026-02-30",
+   "valid": false
+  },
+  {
+   "due": "2028-02-29",
+   "valid": true
+  },
+  {
+   "due": "2027-02-29",
+   "valid": false
+  },
+  {
+   "due": "2026-02-28 23:59",
+   "valid": true
+  },
+  {
+   "due": "2026-02-28 24:00",
+   "valid": false
+  },
+  {
+   "due": "2026-02-28 12:60",
+   "valid": false
+  },
+  {
+   "due": "2026-2-28",
+   "valid": false
+  },
+  {
+   "due": "2026-02-28 9:30",
+   "valid": false
+  },
+  {
+   "due": "",
+   "valid": false
+  }
+ ],
+ "next": [
+  {
+   "due": "2026-10-20",
+   "rule": "daily",
+   "today": "2026-10-07",
+   "want": "2026-10-21"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "daily",
+   "today": "2026-10-07",
+   "want": "2026-10-08"
+  },
+  {
+   "due": "2026-10-09",
+   "rule": "weekdays",
+   "today": "2026-10-07",
+   "want": "2026-10-12"
+  },
+  {
+   "due": "2026-10-10",
+   "rule": "weekdays",
+   "today": "2026-10-07",
+   "want": "2026-10-12"
+  },
+  {
+   "due": "2026-10-12",
+   "rule": "weekly",
+   "today": "2026-10-07",
+   "want": "2026-10-19"
+  },
+  {
+   "due": "2026-10-12",
+   "rule": "weekly:monday",
+   "today": "2026-10-07",
+   "want": "2026-10-19"
+  },
+  {
+   "due": "2026-10-14",
+   "rule": "weekly:monday",
+   "today": "2026-10-07",
+   "want": "2026-10-19"
+  },
+  {
+   "due": "2026-10-09",
+   "rule": "weekly:friday",
+   "today": "2026-10-07",
+   "want": "2026-10-16"
+  },
+  {
+   "due": "2027-01-31",
+   "rule": "monthly",
+   "today": "2027-01-05",
+   "want": "2027-02-28"
+  },
+  {
+   "due": "2028-01-31",
+   "rule": "monthly",
+   "today": "2028-01-05",
+   "want": "2028-02-29"
+  },
+  {
+   "due": "2026-12-31 18:00",
+   "rule": "monthly",
+   "today": "2026-10-07",
+   "want": "2027-01-31 18:00"
+  },
+  {
+   "due": "2028-02-29",
+   "rule": "yearly",
+   "today": "2028-01-01",
+   "want": "2029-02-28"
+  },
+  {
+   "due": "2026-03-28 09:30",
+   "rule": "daily",
+   "today": "2026-03-20",
+   "want": "2026-03-29 09:30"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 9 1,15 * *",
+   "today": "2026-10-07",
+   "want": "2026-10-15"
+  },
+  {
+   "due": "2026-10-09",
+   "rule": "cron:0 9 * * 1-5",
+   "today": "2026-10-07",
+   "want": "2026-10-12"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 13 * 5",
+   "today": "2026-10-07",
+   "want": "2026-10-09"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 * * 0",
+   "today": "2026-10-07",
+   "want": "2026-10-11"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 * * 7",
+   "today": "2026-10-07",
+   "want": "2026-10-11"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 */10 * *",
+   "today": "2026-10-07",
+   "want": "2026-10-10"
+  },
+  {
+   "due": "2026-10-10",
+   "rule": "cron:0 0 */10 * *",
+   "today": "2026-10-07",
+   "want": "2026-10-20"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 29 2 *",
+   "today": "2026-10-07",
+   "want": "2028-02-29"
+  },
+  {
+   "due": "2026-10-01",
+   "rule": "cron:0 0 1 1 *",
+   "today": "2026-10-07",
+   "want": "2027-01-01"
+  },
+  {
+   "due": "",
+   "rule": "daily",
+   "today": "2026-10-07",
+   "want": "2026-10-08"
+  },
+  {
+   "due": "2026-10-07",
+   "rule": "bogus",
+   "today": "2026-10-07",
+   "want": "2026-10-08"
+  }
+ ],
+ "valid": [
+  {
+   "rule": "daily",
+   "valid": true
+  },
+  {
+   "rule": "weekly",
+   "valid": true
+  },
+  {
+   "rule": "weekly:monday",
+   "valid": true
+  },
+  {
+   "rule": "weekly:Monday",
+   "valid": false
+  },
+  {
+   "rule": "weekly:",
+   "valid": false
+  },
+  {
+   "rule": "hourly",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 32 * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:*/0 * * * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 1-5 * *",
+   "valid": true
+  },
+  {
+   "rule": "cron:0 0 5-1 * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 * * 7",
+   "valid": true
+  },
+  {
+   "rule": "cron:0 0 * * 8",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 1,15,31 * *",
+   "valid": true
+  },
+  {
+   "rule": "cron:61 0 * * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 +5 * *",
+   "valid": true
+  },
+  {
+   "rule": "cron:0 0 -1 * *",
+   "valid": false
+  },
+  {
+   "rule": "cron:0 0 */2,5 * *",
+   "valid": true
+  }
+ ]
+}

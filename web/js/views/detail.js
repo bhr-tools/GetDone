@@ -289,7 +289,7 @@ export class TaskDetail {
     }
     const due = t.due_date ? formatDue(t.due_date, app.state.today) : null;
     fields.push(
-      fieldButton('Due date', 'calendar', due ? due.text : 'No date', (b) => openPopover(b,
+      this.dueField = fieldButton('Due date', 'calendar', due ? due.text : 'No date', (b) => openPopover(b,
         datePicker(t.due_date, (value) => { closePopover(); this.update({ due_date: value }); }), { title: 'Due date' }),
       due ? `due ${due.status}` : ''),
       fieldButton('Repeat', 'repeat', t.recurrence ? recurrenceLabel(t.recurrence) : 'Does not repeat', (b) => this.pickRepeat(b)),
@@ -297,7 +297,7 @@ export class TaskDetail {
         label: PRIORITY_LABELS[p], icon: 'flag', className: `p${p}`, selected: t.priority === p, run: () => this.update({ priority: p }),
       }))), { title: 'Priority' }), `p${t.priority}`));
 
-    const location = h('input', { type: 'text', class: 'input', value: t.location || '', placeholder: 'Place or address', maxLength: 500, attrs: { 'aria-label': 'Location' } });
+    const location = this.locationInput = h('input', { type: 'text', class: 'input', value: t.location || '', placeholder: 'Place or address', maxLength: 500, attrs: { 'aria-label': 'Location' } });
     const saveLocation = () => {
       const v = location.value.trim() || null;
       if (v !== (this.task.location || null)) this.update({ location: v });
@@ -542,6 +542,13 @@ export class TaskDetail {
     } else if (e.key === 'f') {
       e.preventDefault();
       this.attach();
+    } else if (e.key === 't') {
+      e.preventDefault();
+      this.dueField?.querySelector('button').click();
+    } else if (e.key === 'w') {
+      e.preventDefault();
+      this.locationInput?.focus();
+      this.locationInput?.select();
     }
   }
 }

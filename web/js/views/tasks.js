@@ -60,13 +60,17 @@ export function taskRow(ctx, task, { compact = false } = {}) {
     dataset: compact ? { id: task.id } : { id: task.id, drag: 'task', drop: 'task' },
     onclick: (e) => {
       if (e.target.closest('a, button')) return;
+      if (!compact && app.selectClick(task.id, e)) return;
       app.openDetail(task.id);
     },
+    // Shift+click selects a range, not the text in between.
+    onmousedown: (e) => { if (e.shiftKey && !compact) e.preventDefault(); },
   },
   h('button', {
     type: 'button', class: 'task-check', title: 'Complete',
     attrs: { 'aria-label': `Complete "${task.title}"` },
-    onclick: () => app.completeTasks([task.id]),
+    // In select mode the circle selects too: no completion by mistake.
+    onclick: (e) => (!compact && app.state.selecting ? app.selectClick(task.id, e) : app.completeTasks([task.id])),
   }, icon('check')),
   h('div', { class: 'task-body' },
     h('div', { class: 'task-title' }, task.title),

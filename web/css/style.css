@@ -899,6 +899,46 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 }
 .toast-action:hover { background: var(--rp-iris); color: var(--on-accent); }
 
+/* Group actions on the selected tasks. */
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 44px;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--rp-surface);
+  box-shadow: var(--shadow);
+  font-size: 0.84rem;
+  transform: translateX(-50%);
+  animation: selection-in 0.18s ease-out;
+}
+.selection-bar[hidden] { display: none; }
+@keyframes selection-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+.selection-count { margin-right: 6px; color: var(--rp-iris); font-weight: 700; white-space: nowrap; }
+.selection-actions { display: flex; gap: 2px; }
+.selection-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--rp-text);
+  white-space: nowrap;
+}
+.selection-action:hover:not(:disabled), .selection-action.is-open { background: var(--rp-overlay); }
+.selection-action:disabled { opacity: 0.4; cursor: default; }
+.selection-close { margin-left: 2px; }
+body.selecting .toast { bottom: 100px; }
+/* In select mode the circle is a checkbox. */
+body.selecting .task-row.selected > .task-check { border-color: var(--rp-iris); background: var(--rp-iris); color: var(--on-accent); }
+
 /* ==========================================================================
    Phones
    ========================================================================== */
@@ -966,6 +1006,23 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
   .fab .icon svg { width: 24px; height: 24px; stroke-width: 2.5; }
   .fab:active { transform: scale(0.94); }
   body.has-modal .fab { display: none; }
+  body.selecting .fab { display: none; }
+  .selection-bar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-width: none;
+    padding: 6px 6px 6px 14px;
+    border-radius: 16px;
+    transform: none;
+  }
+  @keyframes selection-in { from { opacity: 0; transform: translateY(12px); } }
+  .selection-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .selection-label { display: none; }
+  .selection-action { width: 40px; height: 40px; justify-content: center; padding: 0; }
+  .selection-action .icon svg { width: 18px; height: 18px; }
+  body.has-modal .selection-bar { display: none; }
+  body.selecting .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
   .toast { right: 16px; left: 16px; bottom: calc(88px + env(safe-area-inset-bottom)); max-width: none; }
 
   /* Popovers become bottom sheets. */

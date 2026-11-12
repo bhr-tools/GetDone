@@ -3,9 +3,10 @@
 import { api, ApiError, engine, onUnauthorized } from './api.js';
 import { h, icon, isMobile } from './dom.js';
 import { todayISO, splitDue, withDate, addDays, parseISO, WEEKDAYS_SHORT, MONTHS_SHORT } from './dates.js';
-import { openModal, closeAllModals, closePopover, confirmDialog, promptDialog, openMenu, toast, topModal } from './ui/overlay.js';
+import { openModal, closeAllModals, closePopover, confirmDialog, promptDialog, openMenu, openPopover, toast, topModal } from './ui/overlay.js';
+import { datePicker } from './ui/datepicker.js';
 import { openPicker } from './ui/picker.js';
-import { createComposer } from './views/composer.js';
+import { createComposer, PRIORITY_LABELS } from './views/composer.js';
 import { renderTasks, renderWeekStrip } from './views/tasks.js';
 import { renderSidebar, sidebarRows } from './views/sidebar.js';
 import { TaskDetail } from './views/detail.js';
@@ -57,7 +58,8 @@ class App {
       tasks: [],              // tasks of the current view (tree, or flat for upcoming)
       counts: { inbox: 0, upcoming: 0, projects: {} },
       cursorId: null,         // task under the keyboard cursor
-      selection: new Set(),   // tasks selected with Space
+      selection: new Set(),   // tasks selected with Space, Ctrl+click or in select mode
+      selecting: false,       // select mode (phone): a tap selects instead of opening
       focus: 'tasks',         // tasks | sidebar
       sidebarIndex: 0,
       today: todayISO(),
@@ -172,6 +174,7 @@ class App {
     s.cursorId = null;
     this.cursorIndex = 0;
     s.selection.clear();
+    s.selecting = false;
     if (!keepFocus) s.focus = 'tasks';
     if (!keepFocus) this.closeSidebar();
     s.tasks = [];
@@ -256,6 +259,42 @@ class App {
     }
     for (const r of area.querySelectorAll('.task-row')) r.classList.toggle('selected', s.selection.has(r.dataset.id));
     this.renderStatus();
+    this.renderSelectionBar();
+  }
+
+  /** The bar of group actions, shown while tasks are selected or in select mode. */
+  renderSelectionBar() {
+    const s = this.state;
+    const bar = $('selection-bar');
+    const count = s.selection.size;
+    const visible = count > 0 || s.selecting;
+    bar.hidden = !visible;
+    document.body.classList.toggle('selecting', visible);
+    if (!visible) return;
+    if (!bar.firstChild) this.buildSelectionBar(bar);
+    bar.querySelector('.selection-count').textContent =
+      count ? `${count} selected` : (isMobile() ? 'Tap tasks to select' : 'Click tasks to select');
+    for (const b of bar.querySelectorAll('.selection-action')) b.disabled = !count;
+  }
+
+  buildSelectionBar(bar) {
+    const action = (label, iconName, hint, run) => h('button', {
+      type: 'button', class: 'selection-action', title: hint ? `${label} (${hint})` : label,
+      attrs: { 'aria-label': label }, onclick: (e) => run(e.currentTarget),
+    }, icon(iconName), h('span', { class: 'selection-label' }, label));
+    const ids = () => this.targetIds();
+    bar.append(
+      h('span', { class: 'selection-count' }),
+      h('div', { class: 'selection-actions' },
+        action('Date', 'calendar', 't', (b) => this.pickDateForTasks(ids(), b)),
+        action('Location', 'pin', 'w', (b) => this.pickLocationForTasks(ids())),
+        action('Priority', 'flag', '1-3', (b) => this.pickPriorityForTasks(ids(), b)),
+        action('Project', 'hash', 'm', () => this.pickProjectForTasks(ids())),
+        action('Complete', 'check', 'd', () => this.completeTasks(ids()))),
+      h('button', {
+        type: 'button', class: 'icon-button selection-close', title: 'Clear selection (Esc)',
+        attrs: { 'aria-label': 'Clear selection' }, onclick: () => this.clearSelection(),
+      }, icon('close')));
   }
 
   renderSidebarCursor() {
@@ -271,7 +310,7 @@ class App {
   /** Updates the status bar. mode: 'INSERT' while typing, else derived. */
   renderStatus(mode = null) {
     const s = this.state;
-    const label = mode || (s.selection.size ? `VISUAL (${s.selection.size})` : s.focus === 'sidebar' ? 'SIDEBAR' : 'NORMAL');
+    const label = mode || (s.selection.size || s.selecting ? `VISUAL (${s.selection.size})` : s.focus === 'sidebar' ? 'SIDEBAR' : 'NORMAL');
     const modeEl = $('status-mode');
     modeEl.textContent = `-- ${label} --`;
     modeEl.className = `status-mode mode-${label.split(' ')[0].toLowerCase()}`;
@@ -414,7 +453,39 @@ class App {
 
   clearSelection() {
     this.state.selection.clear();
+    this.state.selecting = false;
     this.renderCursor(false);
+  }
+
+  /** Select mode, from the ⋯ menu: on a phone, a long press drags. */
+  startSelecting() {
+    this.state.selecting = true;
+    this.renderCursor(false);
+  }
+
+  /**
+   * A click on a task row: Shift selects the range from the last clicked task,
+   * Ctrl/Cmd (or any tap in select mode) adds or removes the task. Returns
+   * false for a plain click, which opens the task.
+   */
+  selectClick(id, e) {
+    const s = this.state;
+    if (e.shiftKey) {
+      const ids = this.order.map((t) => t.id);
+      const from = ids.indexOf(this.selectAnchor ?? s.cursorId);
+      const to = ids.indexOf(id);
+      if (from < 0) s.selection.add(id);
+      else for (const x of ids.slice(Math.min(from, to), Math.max(from, to) + 1)) s.selection.add(x);
+    } else if (e.ctrlKey || e.metaKey || s.selecting) {
+      if (s.selection.has(id)) s.selection.delete(id);
+      else s.selection.add(id);
+      this.selectAnchor = id;
+    } else {
+      return false;
+    }
+    s.cursorId = id;
+    this.renderCursor(false);
+    return true;
   }
 
   openCursorDetail() {
@@ -457,6 +528,7 @@ class App {
       }
     }
     this.state.selection.clear();
+    this.state.selecting = false;
     if (!items.length) return;
     this.undoStack.push(items);
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
@@ -514,24 +586,111 @@ class App {
       if (placement.before_id || placement.after_id) placement = { after_id: moved.id };
     }
     this.state.selection.clear();
+    this.state.selecting = false;
     await this.refresh();
   }
 
-  async rescheduleTasks(ids, date) {
-    // Changing a task's day shifts its subtasks by as many days: update parents
-    // first so that subtasks end up on `date` too.
+  /**
+   * Parents before their subtasks: changing a task's day shifts its subtasks
+   * by as many days, so subtasks updated afterwards end up where asked.
+   */
+  byDepth(ids) {
     const depth = (id) => {
       let n = 0;
       for (let t = this.findTask(id); t?.parent_id; t = this.findTask(t.parent_id)) n++;
       return n;
     };
-    ids = [...ids].sort((a, b) => depth(a) - depth(b));
+    return [...ids].sort((a, b) => depth(a) - depth(b));
+  }
+
+  async rescheduleTasks(ids, date) {
+    ids = this.byDepth(ids);
     for (const id of ids) {
       const task = this.findTask(id);
       if (await this.run(() => api.tasks.update(id, { due_date: withDate(task?.due_date, date) })) === undefined) break;
     }
     this.state.selection.clear();
+    this.state.selecting = false;
     await this.refresh();
+  }
+
+  /**
+   * Sets one field on several tasks, each to valueFor(task), then offers to
+   * undo: every task gets its own previous value back. The selection stays,
+   * to set another field on the same tasks.
+   */
+  async editTasks(ids, field, valueFor, message) {
+    const previous = [];
+    for (const id of this.byDepth(ids)) {
+      const task = this.findTask(id);
+      if (!task) continue;
+      const value = valueFor(task);
+      if (value === (task[field] ?? null)) continue;
+      if (await this.run(() => api.tasks.update(id, { [field]: value })) === undefined) break;
+      previous.push({ id, value: task[field] ?? null });
+    }
+    await this.refresh();
+    if (!previous.length) return;
+    toast(message(ids.length), {
+      action: {
+        label: 'Undo',
+        run: async () => {
+          for (const p of previous) {
+            if (await this.run(() => api.tasks.update(p.id, { [field]: p.value })) === undefined) break;
+          }
+          await this.refresh();
+        },
+      },
+    });
+  }
+
+  /** The value of a field when all the tasks share it, else null. */
+  commonValue(ids, field) {
+    const values = new Set(ids.map((id) => this.findTask(id)?.[field] ?? null));
+    return values.size === 1 ? [...values][0] : null;
+  }
+
+  taskRowEl(id) {
+    return id ? $('tasks').querySelector(`.task-row[data-id="${CSS.escape(id)}"]`) : null;
+  }
+
+  /** t: due date of the selected tasks, or of the task under the cursor. */
+  pickDateForTasks(ids, anchor = this.taskRowEl(ids[0]) || $('view-title')) {
+    if (!ids.length) return;
+    const many = ids.length > 1;
+    openPopover(anchor, datePicker(this.commonValue(ids, 'due_date'), (due) => {
+      closePopover();
+      // With several tasks, picking a day keeps each task's own time.
+      const valueFor = (t) => (due === null || !many || splitDue(due).time ? due : withDate(t.due_date, due));
+      this.editTasks(ids, 'due_date', valueFor, (n) => {
+        if (due === null) return n === 1 ? 'Date removed' : `Date removed from ${n} tasks`;
+        return n === 1 ? `Due ${this.dueText(due)}` : `${n} tasks due ${this.dueText(due)}`;
+      });
+    }), { title: many ? `Due date · ${ids.length} tasks` : 'Due date' });
+  }
+
+  /** w: location of the selected tasks, or of the task under the cursor. */
+  async pickLocationForTasks(ids) {
+    if (!ids.length) return;
+    const answer = await promptDialog(ids.length > 1 ? `Location of ${ids.length} tasks` : 'Location', {
+      value: this.commonValue(ids, 'location') || '', placeholder: 'Place or address (empty to remove)',
+      maxLength: 500, allowEmpty: true,
+    });
+    if (answer === null) return; // cancelled
+    const location = answer || null;
+    await this.editTasks(ids, 'location', () => location, (n) => {
+      const tasks = n === 1 ? 'task' : `${n} tasks`;
+      return location ? `Location set on ${tasks}` : `Location removed from ${tasks}`;
+    });
+  }
+
+  pickPriorityForTasks(ids, anchor) {
+    if (!ids.length) return;
+    const current = this.commonValue(ids, 'priority');
+    openMenu(anchor, [1, 2, 3].map((p) => ({
+      label: PRIORITY_LABELS[p], icon: 'flag', className: `p${p}`, selected: current === p,
+      run: () => this.setPriority(ids, p),
+    })), { title: 'Priority' });
   }
 
   canReorder() {
@@ -1117,7 +1276,9 @@ class App {
           row(['d'], 'Complete'),
           row(['u'], 'Undo completion'),
           row(['1', '2', '3'], 'Priority (also & é " on AZERTY)'),
-          row(['Space'], 'Select / unselect'),
+          row(['Space'], 'Select / unselect (or Ctrl+click, Shift+click)'),
+          row(['t'], 'Due date'),
+          row(['w'], 'Location'),
           row(['m'], 'Move to project'),
           row(['s'], 'Move to section (Upcoming: to a day)'),
           row(['J', 'K'], 'Move down / up (manual order)'),
@@ -1126,6 +1287,7 @@ class App {
           row(['Enter'], 'Edit the title'),
           row(['a'], 'Add a subtask'),
           row(['f'], 'Attach a file'),
+          row(['t', 'w'], 'Due date / location'),
           row(['Ctrl', 'Enter'], 'Save the description'))),
     });
   }
@@ -1307,7 +1469,12 @@ class App {
       if (p) this.deleteProject(p);
     });
     $('more-button').addEventListener('click', () => {
-      const items = [{ label: 'Undo completion', icon: 'undo', hint: 'u', run: () => this.undo() }];
+      const items = [
+        this.state.selecting
+          ? { label: 'Stop selecting', icon: 'close', hint: 'Esc', run: () => this.clearSelection() }
+          : { label: 'Select tasks', icon: 'select', run: () => this.startSelecting() },
+        { label: 'Undo completion', icon: 'undo', hint: 'u', run: () => this.undo() },
+      ];
       if (this.state.view !== 'upcoming') {
         items.push('separator',
           { label: 'Export as CSV', icon: 'download', run: () => this.exportCSV() },

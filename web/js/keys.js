@@ -89,6 +89,8 @@ export function initKeys(app) {
       case ' ': app.toggleSelection(); return true;
       case 'm': app.pickProjectForTasks(app.targetIds()); return true;
       case 's': app.pickSectionForTasks(app.targetIds()); return true;
+      case 't': app.pickDateForTasks(app.targetIds()); return true;
+      case 'w': app.pickLocationForTasks(app.targetIds()); return true;
       case 'e': case 'Enter': app.openCursorDetail(); return true;
       case '/': app.openSearch(); return true;
       case 'q': app.openQuickAdd({ inbox: true }); return true;

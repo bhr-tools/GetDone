@@ -9,6 +9,7 @@ A fast, self-hosted personal task manager built around the principles of **slow 
 - **Deterministic Quick Add:** Instant offline parsing of dates, times, priorities, recurrences and locations, in English and French.
 - **Works offline:** Changes are kept on the device and sent when the connection returns.
 - **Rosé Pine palette:** Moon (dark) and Dawn (light) themes, following the system setting.
+- **Group edits:** Select tasks with `Space`, Ctrl+click or Shift+click (on a phone: ⋯ → Select tasks), then set their date, location, priority or project at once from the bar at the bottom, with undo.
 - **Attachments:** Attach a ticket, a photo or any file (25 MB max) to a task; images show as small thumbnails in its details.
 - **Locations:** Add an address or place name to get a one-click Google Maps link.
 - **One binary:** A single Go binary with embedded SQLite and web app, packaged with Nix Flakes (multi-instance NixOS module).
@@ -29,6 +30,8 @@ Press `?` in the app to show the cheatsheet.
 | `u` | Undo the last completion |
 | `1` `2` `3` (or `&` `é` `"` on AZERTY) | Set priority P1 / P2 / P3 |
 | `Space` | Select / unselect (then act on the whole selection) |
+| `t` | Set the due date |
+| `w` | Set the location |
 | `m` | Move to a project |
 | `s` | Move to a section (in Upcoming: reschedule to a day) |
 | `Shift+J` / `Shift+K` | Move the task down / up (manual order only) |
@@ -37,7 +40,7 @@ Press `?` in the app to show the cheatsheet.
 | `Esc` | Close, leave a field, clear the selection |
 
 In the sidebar, `j`/`k` browse the projects, `Shift+J`/`Shift+K` reorder them and `Shift+L`/`Shift+H` nest or un-nest them.
-In a task's details, `Enter` edits the title, `a` adds a subtask, `f` attaches a file and `Ctrl+Enter` saves the description.
+In a task's details, `Enter` edits the title, `a` adds a subtask, `f` attaches a file, `t` and `w` set the due date and location, and `Ctrl+Enter` saves the description.
 
 Tasks, sections and projects can also be dragged with the mouse, or with a long press on touch screens. While dragging a task or a project, a line with a dot shows where it will land, in the gap between two rows; pull the item right to nest it under the row above (as its first or next subtask), or left to take it out of its parent.
 Reordering follows the manual order: when a list is sorted by date, priority or title, tasks can still be nested or moved to another section or project, but not reordered. In Upcoming, dropping a task on a day reschedules it, and "Reschedule to today" moves every overdue task to today.

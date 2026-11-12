@@ -263,6 +263,22 @@ def phone(browser):
     page.locator(".sheet-backdrop").tap(position={"x": 200, "y": 100})
     page.locator(".detail-header .icon-button").tap()
     page.wait_for_timeout(300)
+    # Select mode from the ⋯ menu: a tap selects instead of opening.
+    page.locator("#more-button").tap()
+    page.locator(".popover .menu-item", has_text="Select tasks").tap()
+    expect(page.locator("#selection-bar .selection-count")).to_have_text("Tap tasks to select")
+    page.locator("#tasks .task-row").nth(0).tap()
+    page.locator("#tasks .task-row").nth(1).tap()
+    expect(page.locator(".detail")).to_have_count(0)
+    expect(page.locator("#selection-bar .selection-count")).to_have_text("2 selected")
+    page.wait_for_timeout(250)
+    shot(page, "m08-selection")
+    page.locator("#selection-bar .selection-action", has_text="Date").tap()
+    page.wait_for_timeout(300)
+    shot(page, "m09-group-date")
+    page.locator(".sheet-backdrop").tap(position={"x": 200, "y": 100})
+    page.locator("#selection-bar .selection-close").tap()
+    expect(page.locator("#selection-bar")).to_be_hidden()
     ctx.close()
 
 
@@ -325,6 +341,29 @@ def workflows(browser):
     expect(page.locator("#sort-label")).to_have_text("Priority")  # persisted, inbox included
     page.locator("#sort-button").click()
     page.locator(".popover .menu-item", has_text="Manual order").click()
+
+    # Group edits: Ctrl+click two tasks, set a location then a date, undo both.
+    rows = page.locator("#tasks .task-row")
+    rows.nth(0).click(modifiers=["Control"])
+    rows.nth(1).click(modifiers=["Control"])
+    expect(page.locator("#selection-bar .selection-count")).to_have_text("2 selected")
+    expect(page.locator(".detail")).to_have_count(0)
+    shot(page, "w05-selection-bar")
+    page.keyboard.press("w")
+    page.locator(".modal.dialog .input").fill("Gare de Lyon")
+    page.keyboard.press("Enter")
+    expect(page.locator(".toast")).to_contain_text("Location set on 2 tasks")
+    expect(page.locator("#tasks .badge.location", has_text="Gare de Lyon")).to_have_count(2)
+    page.locator(".toast-action").click()
+    expect(page.locator("#tasks .badge.location", has_text="Gare de Lyon")).to_have_count(0)
+    page.locator("#selection-bar .selection-action", has_text="Date").click()
+    page.locator(".popover .menu-item", has_text="Tomorrow").click()
+    expect(page.locator(".toast")).to_contain_text("2 tasks due")
+    expect(page.locator("#tasks .task-row.selected .badge.due", has_text="Tomorrow")).to_have_count(2)
+    page.locator(".toast-action").click()
+    expect(page.locator(".toast")).to_have_count(1)
+    page.keyboard.press("Escape")
+    expect(page.locator("#selection-bar")).to_be_hidden()
 
     # Select two tasks with Space and move them to Work with m.
     page.keyboard.press("g")

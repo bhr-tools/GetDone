@@ -214,12 +214,16 @@ export function confirmDialog(title, message, { okText = 'Confirm', cancelText =
 }
 
 /** Resolves to the trimmed text entered, or null when cancelled or empty. */
-export function promptDialog(title, { value = '', placeholder = '', okText = 'Save' } = {}) {
+/**
+ * Asks for a line of text. Resolves to the text, or null when cancelled (or,
+ * without allowEmpty, when left empty; with it, an empty answer is '').
+ */
+export function promptDialog(title, { value = '', placeholder = '', okText = 'Save', maxLength = 200, allowEmpty = false } = {}) {
   return new Promise((resolve) => {
     let answer = null;
-    const input = h('input', { type: 'text', class: 'input', value, placeholder, maxLength: 200, autocomplete: 'off' });
+    const input = h('input', { type: 'text', class: 'input', value, placeholder, maxLength, autocomplete: 'off' });
     const submit = () => {
-      answer = input.value.trim() || null;
+      answer = input.value.trim() || (allowEmpty ? '' : null);
       m.close();
     };
     input.addEventListener('keydown', (e) => {

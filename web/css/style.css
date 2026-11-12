@@ -524,7 +524,7 @@ select.input { cursor: pointer; }
 .popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Date picker */
-.datepicker { display: flex; flex-direction: column; gap: 6px; width: 272px; max-width: 100%; }
+.datepicker { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 272px; }
 .datepicker > .input { margin: 2px 0 0; }
 .datepicker-hint { min-height: 1em; padding: 0 4px; color: var(--rp-muted); font-size: 0.74rem; }
 .datepicker-hint:empty { display: none; }

@@ -65,8 +65,9 @@ export function isPopoverOpen() {
 function positionPopover(el, anchor) {
   const margin = 8;
   const a = anchor.getBoundingClientRect();
-  // As wide as a field button, but never as wide as a whole task row.
-  el.style.minWidth = `${Math.min(Math.max(a.width, 180), 340)}px`;
+  // As wide as a field button; a wider anchor (a task row) leaves the
+  // popover at its content's width.
+  el.style.minWidth = `${a.width <= 340 ? Math.max(a.width, 180) : 180}px`;
   const p = el.getBoundingClientRect();
   let top = a.bottom + 4;
   if (top + p.height > window.innerHeight - margin && a.top - p.height - 4 > margin) top = a.top - p.height - 4;

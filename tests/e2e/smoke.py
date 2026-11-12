@@ -367,7 +367,9 @@ def workflows(browser):
     # t on a single task: the picker stays narrow, not as wide as the row.
     page.keyboard.press("t")
     expect(page.locator(".popover .datepicker")).to_be_visible()
-    assert page.locator(".popover").bounding_box()["width"] <= 342, "date picker stretched to the row"
+    pop = page.locator(".popover").bounding_box()["width"]
+    picker = page.locator(".popover .datepicker").bounding_box()["width"]
+    assert pop <= 300 and pop - picker <= 16, f"date picker {picker}px in a {pop}px popover"
     page.keyboard.press("Escape")
     expect(page.locator(".popover")).to_have_count(0)
 

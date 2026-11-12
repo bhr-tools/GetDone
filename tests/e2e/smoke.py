@@ -364,6 +364,12 @@ def workflows(browser):
     expect(page.locator(".toast")).to_have_count(1)
     page.keyboard.press("Escape")
     expect(page.locator("#selection-bar")).to_be_hidden()
+    # t on a single task: the picker stays narrow, not as wide as the row.
+    page.keyboard.press("t")
+    expect(page.locator(".popover .datepicker")).to_be_visible()
+    assert page.locator(".popover").bounding_box()["width"] <= 342, "date picker stretched to the row"
+    page.keyboard.press("Escape")
+    expect(page.locator(".popover")).to_have_count(0)
 
     # Select two tasks with Space and move them to Work with m.
     page.keyboard.press("g")

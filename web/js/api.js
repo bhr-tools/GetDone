@@ -160,13 +160,6 @@ export const api = {
     },
   },
 
-  /** fields: { project_id } or { new_project } */
-  connect: (app, redirectUri, fields) => post('/api/connect', { app, redirect_uri: redirectUri, ...fields }),
-  apps: {
-    list: () => get('/api/apps'),
-    remove: (appId) => del(`/api/apps/${id(appId)}`),
-  },
-
   search: (query) => local((s) => searchTasks(s, query)),
   counts: () => local((s) => counts(s, todayISO())),
 };

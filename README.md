@@ -61,15 +61,11 @@ Morning meditation every day
 
 Recognized parts are shown as chips while typing; click a chip to keep that text in the title instead.
 
-## Connected apps
-
-Another app (such as a planning assistant) can be given access to **one project**: it adds tasks there and reads that project's tasks, nothing else. The app sends you to `/?connect=<name>&redirect_uri=<url>&state=<s>`; Get Done asks which project it may use (a new one named after the app by default), then sends you back with a one-time code that the app's server trades for a token (`POST /api/connect/token`). With that token (`Authorization: Bearer …`), `GET /api/app/info` says what it opens (`{"app":"GetDone","scope":"project","id":…,"name":…}`, the same answer in each bhr-tools app), `GET /api/app/tasks` lists the project's open tasks and `POST /api/app/tasks` (`title`, `description`, `due_date`) adds one. Disconnect an app from the lock menu → Connected apps, or by deleting its project.
-
 ## Offline mode
 
 The app starts without network (a service worker keeps its files) and shows all your data from a copy kept in the browser (IndexedDB). Every change is applied on the device at once and queued; it is sent to the server as soon as the connection is back, even if the app was closed in between. The status bar shows `offline` and the number of changes waiting.
 
-Technically, `GET /api/sync` returns the whole data (projects, sections, tasks) with an ETag, and `POST /api/sync` applies a batch of changes in order, then returns the new data. Each change has a client-chosen UUID, remembered for 30 days in the `sync_ops` table, so a batch sent twice is applied once. The server stays the authority: the last change to reach it wins, and every snapshot it sends replaces the device's guess. Importing or exporting CSV, connected apps and the password need the network. **Lock** erases the data kept on the device.
+Technically, `GET /api/sync` returns the whole data (projects, sections, tasks) with an ETag, and `POST /api/sync` applies a batch of changes in order, then returns the new data. Each change has a client-chosen UUID, remembered for 30 days in the `sync_ops` table, so a batch sent twice is applied once. The server stays the authority: the last change to reach it wins, and every snapshot it sends replaces the device's guess. Importing or exporting CSV and the password need the network. **Lock** erases the data kept on the device.
 
 ## Installation & usage
 

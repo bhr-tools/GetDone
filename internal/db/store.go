@@ -172,7 +172,7 @@ var migrations = []string{
 	DELETE FROM auth_sessions;
 	CREATE INDEX IF NOT EXISTS idx_tasks_siblings ON tasks(project_id, section_id, parent_id, position);`,
 
-	// 3: apps connected by the user (see apps.go), each to one project.
+	// 3: apps connected by the user, each to one project (dropped by 6).
 	`CREATE TABLE IF NOT EXISTS app_tokens (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
@@ -206,6 +206,9 @@ var migrations = []string{
 		orphaned_at TEXT NOT NULL DEFAULT ''
 	);
 	CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);`,
+
+	// 6: connecting another app to a project is gone.
+	`DROP TABLE IF EXISTS app_tokens;`,
 }
 
 func (s *Store) migrate() error {

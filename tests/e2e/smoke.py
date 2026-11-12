@@ -408,47 +408,12 @@ def workflows(browser):
     ctx.close()
 
 
-def connect(browser):
-    """An app asks for access: the user picks a project, the app comes back
-    with a code, trades it for a token, and shows in Connected apps."""
-    ctx = browser.new_context(viewport={"width": 1280, "height": 820}, timezone_id="Europe/Paris")
-    page = ctx.new_page()
-    watch(page)
-    back = "http://assistant.test/api/getdone/callback"
-    page.route("http://assistant.test/**", lambda route: route.fulfill(status=200, body="back"))
-    page.goto(f"{BASE}/?connect=Planner&redirect_uri={back}&state=s1")
-    page.get_by_label("Password").fill(PASSWORD)
-    page.get_by_role("button", name="Unlock").click()
-    expect(page.locator(".modal-title", has_text="Connect Planner")).to_be_visible()
-    expect(page.get_by_label("Project")).to_have_value("")  # a new project by default
-    shot(page, "c01-connect")
-    with page.expect_navigation(url=re.compile(r"assistant\.test.*code=.*state=s1")):
-        page.get_by_role("button", name="Allow").click()
-    code = re.search(r"code=([0-9a-f]+)", page.url).group(1)
-    tok = page.request.post(f"{BASE}/api/connect/token", data={"code": code, "redirect_uri": back}).json()
-    assert tok["project_name"] == "Planner", tok
-    made = page.request.post(f"{BASE}/api/app/tasks", headers={"Authorization": "Bearer " + tok["token"]},
-                             data={"title": "Follow up: Optiver", "due_date": "2030-01-10"})
-    assert made.status == 201, made.text()
-
-    page.goto(BASE)
-    page.locator(".project-row", has_text="Planner").click()
-    expect(page.locator("#tasks .task-row", has_text="Follow up: Optiver")).to_have_count(1)
-    page.locator("#auth-menu").click()
-    page.locator(".popover .menu-item", has_text="Connected apps").click()
-    expect(page.locator(".app-row", has_text="Planner")).to_contain_text("adds to “Planner”")
-    shot(page, "c02-apps")
-    page.locator(".app-row button", has_text="Disconnect").click()
-    expect(page.locator(".modal .dialog-message", has_text="No app is connected")).to_be_visible()
-    gone = page.request.get(f"{BASE}/api/app/tasks", headers={"Authorization": "Bearer " + tok["token"]})
-    assert gone.status == 401
-    ctx.close()
 
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
     failed = False
-    for scenario in (desktop, phone, workflows, connect):
+    for scenario in (desktop, phone, workflows):
         try:
             scenario(browser)
             print(f"{scenario.__name__}: ok")

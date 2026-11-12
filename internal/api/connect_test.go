@@ -16,18 +16,18 @@ func TestConnectedApp(t *testing.T) {
 	c.do("POST", "/api/auth/setup", map[string]any{"password": "secret"}, 200, nil)
 	back := "https://assistant.example.com/api/getdone/callback"
 
-	c.do("POST", "/api/connect", map[string]any{"app": "Assistant", "redirect_uri": "javascript:x", "new_project": "Assistant"}, 400, nil)
+	c.do("POST", "/api/connect", map[string]any{"app": "Planner", "redirect_uri": "javascript:x", "new_project": "Planner"}, 400, nil)
 	var code struct{ Code string }
-	c.do("POST", "/api/connect", map[string]any{"app": "Assistant", "redirect_uri": back, "new_project": "Assistant"}, 200, &code)
+	c.do("POST", "/api/connect", map[string]any{"app": "Planner", "redirect_uri": back, "new_project": "Planner"}, 200, &code)
 	var tok struct {
 		Token       string `json:"token"`
 		ProjectID   string `json:"project_id"`
 		ProjectName string `json:"project_name"`
 	}
 	c.do("POST", "/api/connect/token", map[string]any{"code": code.Code, "redirect_uri": "https://evil.example.com/"}, 400, nil)
-	c.do("POST", "/api/connect", map[string]any{"app": "Assistant", "redirect_uri": back, "new_project": "Assistant"}, 200, &code)
+	c.do("POST", "/api/connect", map[string]any{"app": "Planner", "redirect_uri": back, "new_project": "Planner"}, 200, &code)
 	c.do("POST", "/api/connect/token", map[string]any{"code": code.Code, "redirect_uri": back}, 200, &tok)
-	if tok.Token == "" || tok.ProjectName != "Assistant" {
+	if tok.Token == "" || tok.ProjectName != "Planner" {
 		t.Fatalf("token: %+v", tok)
 	}
 	c.do("POST", "/api/connect/token", map[string]any{"code": code.Code, "redirect_uri": back}, 400, nil) // one use
@@ -43,7 +43,7 @@ func TestConnectedApp(t *testing.T) {
 		}
 		return rec.Body.String()
 	}
-	if got := app("GET", "/api/app/info", "", 200); !strings.Contains(got, `"name":"Assistant"`) || !strings.Contains(got, `"scope":"project"`) {
+	if got := app("GET", "/api/app/info", "", 200); !strings.Contains(got, `"name":"Planner"`) || !strings.Contains(got, `"scope":"project"`) {
 		t.Fatalf("app info: %s", got)
 	}
 	app("POST", "/api/app/tasks", `{"title":"Follow up: Optiver","description":"Sent to HR","due_date":"2026-11-20"}`, 201)
@@ -57,7 +57,7 @@ func TestConnectedApp(t *testing.T) {
 
 	var apps []db.App
 	c.do("GET", "/api/apps", nil, 200, &apps)
-	if len(apps) != 1 || apps[0].ProjectName != "Assistant" || apps[0].UsedAt == nil {
+	if len(apps) != 1 || apps[0].ProjectName != "Planner" || apps[0].UsedAt == nil {
 		t.Fatalf("apps: %+v", apps)
 	}
 	c.do("DELETE", "/api/projects/"+tok.ProjectID, nil, 200, nil)

@@ -13,7 +13,7 @@ import (
 	"github.com/ben/get-done/internal/db"
 )
 
-// Connecting an app (the Assistant…) to Get Done, in the manner of OAuth:
+// Connecting an app (another app of yours…) to Get Done, in the manner of OAuth:
 //
 //  1. the app sends the user to /?connect=<name>&redirect_uri=<url>&state=<s>;
 //  2. Get Done asks the user, logged in, which project the app may add tasks

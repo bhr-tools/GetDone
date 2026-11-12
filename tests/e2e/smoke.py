@@ -416,27 +416,27 @@ def connect(browser):
     watch(page)
     back = "http://assistant.test/api/getdone/callback"
     page.route("http://assistant.test/**", lambda route: route.fulfill(status=200, body="back"))
-    page.goto(f"{BASE}/?connect=Assistant&redirect_uri={back}&state=s1")
+    page.goto(f"{BASE}/?connect=Planner&redirect_uri={back}&state=s1")
     page.get_by_label("Password").fill(PASSWORD)
     page.get_by_role("button", name="Unlock").click()
-    expect(page.locator(".modal-title", has_text="Connect Assistant")).to_be_visible()
+    expect(page.locator(".modal-title", has_text="Connect Planner")).to_be_visible()
     expect(page.get_by_label("Project")).to_have_value("")  # a new project by default
     shot(page, "c01-connect")
     with page.expect_navigation(url=re.compile(r"assistant\.test.*code=.*state=s1")):
         page.get_by_role("button", name="Allow").click()
     code = re.search(r"code=([0-9a-f]+)", page.url).group(1)
     tok = page.request.post(f"{BASE}/api/connect/token", data={"code": code, "redirect_uri": back}).json()
-    assert tok["project_name"] == "Assistant", tok
+    assert tok["project_name"] == "Planner", tok
     made = page.request.post(f"{BASE}/api/app/tasks", headers={"Authorization": "Bearer " + tok["token"]},
                              data={"title": "Follow up: Optiver", "due_date": "2030-01-10"})
     assert made.status == 201, made.text()
 
     page.goto(BASE)
-    page.locator(".project-row", has_text="Assistant").click()
+    page.locator(".project-row", has_text="Planner").click()
     expect(page.locator("#tasks .task-row", has_text="Follow up: Optiver")).to_have_count(1)
     page.locator("#auth-menu").click()
     page.locator(".popover .menu-item", has_text="Connected apps").click()
-    expect(page.locator(".app-row", has_text="Assistant")).to_contain_text("adds to “Assistant”")
+    expect(page.locator(".app-row", has_text="Planner")).to_contain_text("adds to “Planner”")
     shot(page, "c02-apps")
     page.locator(".app-row button", has_text="Disconnect").click()
     expect(page.locator(".modal .dialog-message", has_text="No app is connected")).to_be_visible()

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// An app token lets another app (the Assistant…) add tasks to one project
+// An app token lets another app (another app of yours…) add tasks to one project
 // the user chose, and read that project's tasks; nothing else. The user
 // grants it from the connect page; it never expires and survives a password
 // change, until the user disconnects the app or deletes the project. Stored

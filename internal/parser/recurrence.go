@@ -84,15 +84,25 @@ func validCronField(field string, min, max int) bool {
 	return true
 }
 
-// NextDueDate returns the next occurrence of a recurring task. The next date is
-// computed from the later of the current due date and today, so completing an
-// overdue task never schedules it in the past. The time of day is kept.
+// NextDueDate returns the next occurrence of a recurring task, always after
+// today. Interval rules (weekly, monthly,
+// yearly) keep the phase of the due date: a weekly task due on a Sunday and
+// completed on Monday moves to the next Sunday. The other rules are tied to
+// the calendar and start from the later of the due date and today. The time
+// of day is kept.
 func NextDueDate(due, rule, today string) string {
 	todayDay, _, _ := ParseDue(NormalizeToday(today))
 	base := todayDay
 	clock := ""
 	if day, c, ok := ParseDue(due); ok {
 		clock = c
+		if step := intervalStep(rule); step != nil {
+			for k := 1; ; k++ {
+				if next := step(day, k); next.After(todayDay) {
+					return FormatDue(next, clock)
+				}
+			}
+		}
 		if day.After(base) {
 			base = day
 		}
@@ -121,6 +131,22 @@ func NextDueDate(due, rule, today string) string {
 		next = base.AddDate(0, 0, 1)
 	}
 	return FormatDue(next, clock)
+}
+
+// intervalStep returns the k-th occurrence after a date for the interval
+// rules, or nil for the rules tied to the calendar. Monthly steps are counted
+// from the original date so a clamped day (January 31 → February 28) doesn't
+// drift.
+func intervalStep(rule string) func(time.Time, int) time.Time {
+	switch rule {
+	case "weekly":
+		return func(d time.Time, k int) time.Time { return d.AddDate(0, 0, 7*k) }
+	case "monthly":
+		return func(d time.Time, k int) time.Time { return addMonthsClamped(d, k) }
+	case "yearly":
+		return func(d time.Time, k int) time.Time { return addMonthsClamped(d, 12*k) }
+	}
+	return nil
 }
 
 // NextWeekday returns the first day strictly after from that falls on wd.

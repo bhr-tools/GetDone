@@ -61,7 +61,8 @@ func TestNextDueDate(t *testing.T) {
 		{"2026-10-07", "weekly:monday", "2026-10-12"},
 		{"2026-10-07", "cron:0 9 * * 1", "2026-10-12"},
 		{"2026-10-07", "cron:0 9 1,15 * 5", "2026-10-09"}, // dom OR dow: Friday 9th comes first
-		{"2026-01-31", "monthly", "2026-11-07"},           // overdue: counted from today
+		{"2026-01-31", "monthly", "2026-10-31"},           // overdue: keeps its day of the month
+		{"2026-09-27", "weekly", "2026-10-11"},            // overdue: keeps its weekday
 		{"2026-10-31", "monthly", "2026-11-30"},           // clamped to the end of November
 		{"2028-02-29", "yearly", "2029-02-28"},
 		{"2026-09-01", "daily", "2026-10-08"}, // overdue: next occurrence after today

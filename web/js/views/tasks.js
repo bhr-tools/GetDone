@@ -152,14 +152,17 @@ function upcomingView(ctx) {
   if (overdue.length) {
     const list = h('div', { class: 'task-list' });
     for (const t of overdue) list.append(taskRow(ctx, t));
+    // A recurring task stays overdue: moving it to today would shift its
+    // whole series.
+    const movable = overdue.filter((t) => !t.recurrence);
     blocks.push(h('section', { class: 'task-group overdue' },
       h('header', { class: 'group-header' },
         h('h2', { class: 'group-title' }, 'Overdue'),
         h('span', { class: 'group-count' }, overdue.length),
-        h('button', {
+        movable.length ? h('button', {
           type: 'button', class: 'group-action',
-          onclick: () => app.rescheduleTasks(overdue.map((t) => t.id), today),
-        }, icon('today'), h('span', null, 'Reschedule to today'))),
+          onclick: () => app.rescheduleTasks(movable.map((t) => t.id), today),
+        }, icon('today'), h('span', null, 'Reschedule to today')) : null),
       list));
   }
 

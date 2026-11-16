@@ -166,16 +166,38 @@ function normalizeToday(s) {
 }
 
 /**
- * Next occurrence of a recurring task. It starts from the later of the due
- * date and today, so completing an overdue task never schedules it in the
- * past. The time of day is kept.
+ * k-th occurrence after a date for the interval rules, or null for the rules
+ * tied to the calendar. Monthly steps are counted from the original date so a
+ * clamped day (January 31 → February 28) doesn't drift.
+ */
+function intervalStep(rule) {
+  if (rule === 'weekly') return (d, k) => addDaysUTC(d, 7 * k);
+  if (rule === 'monthly') return (d, k) => addMonthsClamped(d, k);
+  if (rule === 'yearly') return (d, k) => addMonthsClamped(d, 12 * k);
+  return null;
+}
+
+/**
+ * Next occurrence of a recurring task, always after today. Interval rules
+ * (weekly, monthly, yearly) keep the phase of the due date: a weekly task due
+ * on a Sunday and completed on Monday moves to the next Sunday. The other
+ * rules are tied to the calendar and start from the later of the due date and
+ * today. The time of day is kept.
  */
 export function nextDueDate(due, rule, today) {
-  let base = parseDay(normalizeToday(today)).date;
+  const todayDay = parseDay(normalizeToday(today)).date;
+  let base = todayDay;
   let clock = '';
   const p = parseDay(due);
   if (p) {
     clock = p.clock;
+    const step = intervalStep(rule);
+    if (step) {
+      for (let k = 1; ; k++) {
+        const next = step(p.date, k);
+        if (next > todayDay) return formatDay(next, clock);
+      }
+    }
     if (p.date > base) base = p.date;
   }
   let next;

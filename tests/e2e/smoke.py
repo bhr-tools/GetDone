@@ -325,6 +325,16 @@ def workflows(browser):
     shot(page, "w02-dark-detail")
     page.keyboard.press("Enter")
     expect(page.locator(".detail-title")).to_be_focused()
+    # Leaving the title (Enter saves, Escape cancels) keeps the dialog's keys:
+    # Enter edits it again.
+    page.keyboard.press("Enter")
+    expect(page.locator(".detail-title")).not_to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator(".detail-title")).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(page.locator(".detail-title")).not_to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator(".detail-title")).to_be_focused()
     page.keyboard.press("Escape")
     page.keyboard.press("Escape")
     expect(page.locator(".detail")).to_have_count(0)

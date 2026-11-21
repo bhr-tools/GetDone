@@ -159,6 +159,13 @@ export function openModal({ title, body, footer, className = '', dismissible = t
       onClose?.();
     },
   };
+  // A field left with blur() drops focus on <body>, out of reach of the
+  // dialog's own key handlers: hand it back to the dialog.
+  box.addEventListener('focusout', () => setTimeout(() => {
+    if (!closed && topModal() === handle && (document.activeElement === document.body || !document.activeElement)) {
+      box.focus({ preventScroll: true });
+    }
+  }, 0));
   modals.push(handle);
   document.body.append(overlay);
   document.body.classList.add('has-modal');

@@ -89,7 +89,7 @@ export class TaskDetail {
     this.title.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.isComposing) {
         e.preventDefault();
-        this.title.blur();
+        this.leaveField();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this.cancelText(this.title, this.task.title);
@@ -100,7 +100,7 @@ export class TaskDetail {
     this.description.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        this.description.blur();
+        this.leaveField();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this.cancelText(this.description, this.task.description);
@@ -114,7 +114,7 @@ export class TaskDetail {
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this.subtaskInput.value = '';
-        this.subtaskInput.blur();
+        this.leaveField();
       }
     });
 
@@ -306,11 +306,11 @@ export class TaskDetail {
     location.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        location.blur();
+        this.leaveField();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         location.value = this.task.location || '';
-        location.blur();
+        this.leaveField();
       }
     });
     fields.push(h('div', { class: 'field' },
@@ -465,6 +465,11 @@ export class TaskDetail {
     else if (document.activeElement === this.description) await this.commitDescription();
   }
 
+  /** Ends text editing and hands the keys back to the dialog (Enter edits again). */
+  leaveField() {
+    this.modal?.el.focus({ preventScroll: true });
+  }
+
   async cancelText(field, saved) {
     if (field.value.trim() !== (saved || '').trim()) {
       const discard = await confirmDialog('Discard changes?', 'Your edits to this field will be lost.', { okText: 'Discard', cancelText: 'Keep editing' });
@@ -475,7 +480,7 @@ export class TaskDetail {
     }
     field.value = saved || '';
     this.chips.hidden = true;
-    field.blur();
+    this.leaveField();
   }
 
   async addSubtask() {

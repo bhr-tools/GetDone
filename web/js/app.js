@@ -166,9 +166,15 @@ class App {
     }
   }
 
-  async switchView(view, projectId = null, { keepFocus = false } = {}) {
+  /**
+   * Shows another view. A task being written in the inline composer is only
+   * dropped once confirmed, unless force (the view is gone, a reload): resolves
+   * to false when the user keeps editing.
+   */
+  async switchView(view, projectId = null, { keepFocus = false, force = false } = {}) {
     const s = this.state;
-    this.closeInlineComposer();
+    if (force) this.closeInlineComposer();
+    else if (this.composer && !await this.composer.el.requestCancel()) return false;
     s.view = view;
     s.projectId = view === 'project' ? projectId : null;
     s.cursorId = null;
@@ -181,6 +187,7 @@ class App {
     s.sections = [];
     await this.refresh();
     $('main').scrollTop = 0;
+    return true;
   }
 
   /** Reloads the current view and the sidebar counts. */
@@ -201,7 +208,7 @@ class App {
       if (id !== this.loadId) return;
       if (err.status === 404 && s.view === 'project') {
         await this.loadProjects();
-        await this.switchView('inbox');
+        await this.switchView('inbox', null, { force: true });
         return;
       }
       this.reportError(err);
@@ -893,7 +900,8 @@ class App {
       },
       cancel: () => modal.close(),
     });
-    modal = openModal({ className: 'quick-add', body: composer });
+    // A click outside asks too, like Escape, before dropping what was typed.
+    modal = openModal({ className: 'quick-add', body: composer, onEscape: () => composer.requestCancel() });
   }
 
   // -------------------------------------------------------------------------
@@ -1113,7 +1121,7 @@ class App {
     if (!ok || await this.run(() => api.projects.remove(project.id)) === undefined) return;
     await this.loadProjects();
     const s = this.state;
-    if (s.view === 'project' && !this.findProject(s.projectId)) await this.switchView('inbox');
+    if (s.view === 'project' && !this.findProject(s.projectId)) await this.switchView('inbox', null, { force: true });
     else await this.refresh();
   }
 
@@ -1210,8 +1218,8 @@ class App {
         return [...projects, ...tasks.map((t) => ({
           label: t.title, icon: 'check', badge: t.project_id === 'inbox' ? 'Inbox' : t.project_name,
           run: async () => {
-            await (t.project_id === 'inbox' ? this.switchView('inbox') : this.switchView('project', t.project_id));
-            this.openDetail(t.id);
+            const shown = await (t.project_id === 'inbox' ? this.switchView('inbox') : this.switchView('project', t.project_id));
+            if (shown) this.openDetail(t.id);
           },
         }))];
       },
@@ -1381,7 +1389,7 @@ class App {
       return;
     }
     await this.loadProjects();
-    await this.switchView(this.state.view, this.state.projectId);
+    await this.switchView(this.state.view, this.state.projectId, { force: true });
   }
 
   changePassword() {

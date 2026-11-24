@@ -218,7 +218,9 @@ export function confirmDialog(title, message, { okText = 'Confirm', cancelText =
         ok.click();
       }
     });
-    requestAnimationFrame(() => ok.focus());
+    // At once: a key pressed right after must reach this dialog, not the
+    // field that opened it.
+    ok.focus();
   });
 }
 

@@ -5,7 +5,7 @@
 import { h, icon, autoGrow } from '../dom.js';
 import { formatDue, recurrenceLabel } from '../dates.js';
 import { parseQuickAdd } from '../quickadd.js';
-import { openPopover, closePopover, menuList } from '../ui/overlay.js';
+import { openPopover, closePopover, menuList, confirmDialog } from '../ui/overlay.js';
 import { datePicker } from '../ui/datepicker.js';
 
 const MAX_TITLE = 500;
@@ -17,7 +17,7 @@ export const PRIORITY_LABELS = { 1: 'Priority 1 · Urgent', 2: 'Priority 2 · Hi
  *   defaults  { dueDate, priority } prefilled for the current view
  *   submit(fields) async; receives { title, description, priority, due_date,
  *             recurrence, location } and returns true once the task is saved
- *   cancel()  called on Cancel / Escape
+ *   cancel()  called on Cancel / Escape, once confirmed when something was typed
  *   submitLabel  text of the submit button
  */
 export function createComposer({ defaults = {}, submit, cancel, submitLabel = 'Add task' }) {
@@ -26,6 +26,7 @@ export function createComposer({ defaults = {}, submit, cancel, submitLabel = 'A
   let ignored = new Set();
   let parsed = parseQuickAdd('');
   let busy = false;
+  let confirming = false;
 
   const title = h('input', {
     type: 'text', class: 'composer-title', placeholder: 'Task name', maxLength: MAX_TITLE,
@@ -135,6 +136,31 @@ export function createComposer({ defaults = {}, submit, cancel, submitLabel = 'A
     }
   };
 
+  const isDirty = () => !!(title.value.trim() || description.value.trim() || Object.keys(chosen).length);
+
+  /**
+   * Cancel / Escape / leaving the view: asks before dropping a task being
+   * written. Resolves to true once the composer is gone.
+   */
+  const requestCancel = async () => {
+    if (confirming) return false;
+    if (!isDirty()) {
+      cancel();
+      return true;
+    }
+    const field = document.activeElement === description ? description : title;
+    confirming = true;
+    let discard;
+    try {
+      discard = await confirmDialog('Discard changes?', 'The task you are writing will be lost.', { okText: 'Discard', cancelText: 'Keep editing' });
+    } finally {
+      confirming = false;
+    }
+    if (discard) cancel();
+    else if (root.isConnected) field.focus();
+    return discard;
+  };
+
   // A long paste is split: the first 500 characters go to the title, the
   // rest to the description.
   title.addEventListener('paste', (e) => {
@@ -155,7 +181,7 @@ export function createComposer({ defaults = {}, submit, cancel, submitLabel = 'A
   const onKey = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (!closePopover()) cancel();
+      if (!closePopover()) requestCancel();
     } else if (e.key === 'Enter' && !e.isComposing && (e.target === title || e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       doSubmit();
@@ -173,9 +199,10 @@ export function createComposer({ defaults = {}, submit, cancel, submitLabel = 'A
     h('div', { class: 'composer-bar' },
       h('div', { class: 'composer-chips' }, dateChip, priorityChip, locationChip),
       h('div', { class: 'composer-actions' },
-        h('button', { type: 'button', class: 'button composer-cancel', onclick: () => cancel() }, 'Cancel'),
+        h('button', { type: 'button', class: 'button composer-cancel', onclick: () => requestCancel() }, 'Cancel'),
         submitButton)));
   root.focusTitle = () => title.focus();
+  root.requestCancel = requestCancel;
   render();
   return root;
 }

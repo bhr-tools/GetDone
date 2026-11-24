@@ -95,7 +95,8 @@ export class TaskDetail {
         this.cancelText(this.title, this.task.title);
       }
     });
-    this.title.addEventListener('blur', () => this.commitTitle());
+    // Opening the discard question blurs the field: that is not a save.
+    this.title.addEventListener('blur', () => { if (this.confirming !== this.title) this.commitTitle(); });
     this.description.addEventListener('input', () => autoGrow(this.description, 64));
     this.description.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -106,7 +107,7 @@ export class TaskDetail {
         this.cancelText(this.description, this.task.description);
       }
     });
-    this.description.addEventListener('blur', () => this.commitDescription());
+    this.description.addEventListener('blur', () => { if (this.confirming !== this.description) this.commitDescription(); });
     this.subtaskInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.isComposing) {
         e.preventDefault();
@@ -151,11 +152,12 @@ export class TaskDetail {
   /** Shows this.task. Text fields being edited are left alone unless resetText. */
   fill({ resetText = false } = {}) {
     const t = this.task;
-    if (resetText || document.activeElement !== this.title) {
+    const editing = (field) => document.activeElement === field || this.confirming === field;
+    if (resetText || !editing(this.title)) {
       this.title.value = t.title;
       this.chips.hidden = true;
     }
-    if (resetText || document.activeElement !== this.description) this.description.value = t.description || '';
+    if (resetText || !editing(this.description)) this.description.value = t.description || '';
     requestAnimationFrame(() => {
       autoGrow(this.title);
       autoGrow(this.description, 64);
@@ -470,13 +472,28 @@ export class TaskDetail {
     this.modal?.el.focus({ preventScroll: true });
   }
 
+  /**
+   * Escape in a text field: drops the edits, after asking when there are any.
+   * Nothing is saved meanwhile, so "Keep editing" goes back to the same edits
+   * with the saved value still as the reference (Escape asks again).
+   */
   async cancelText(field, saved) {
+    if (this.confirming) return;
     if (field.value.trim() !== (saved || '').trim()) {
-      const discard = await confirmDialog('Discard changes?', 'Your edits to this field will be lost.', { okText: 'Discard', cancelText: 'Keep editing' });
+      this.confirming = field;
+      let discard;
+      try {
+        discard = await confirmDialog('Discard changes?', 'Your edits to this field will be lost.', { okText: 'Discard', cancelText: 'Keep editing' });
+      } finally {
+        this.confirming = null;
+      }
+      if (!this.task) return;
       if (!discard) {
         field.focus();
         return;
       }
+      // The field still holds the edits; whatever the task holds now is the reference.
+      saved = field === this.title ? this.task.title : this.task.description;
     }
     field.value = saved || '';
     this.chips.hidden = true;

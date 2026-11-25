@@ -231,13 +231,22 @@ def phone(browser):
     watch(page)
     page.goto(BASE)
     expect(page.locator("#tasks .task-row").first).to_be_visible()
+    expect(page.locator(".tabbar")).to_be_visible()
+    expect(page.locator('.tab[data-tab="inbox"]')).to_have_class("tab active")
     shot(page, "m01-inbox")
-    page.locator("#menu-toggle").tap()
-    page.wait_for_timeout(350)
-    shot(page, "m02-sidebar")
+    # The Projects tab shows the projects; a project is pushed, "‹ Projects" goes back.
+    page.locator('.tab[data-tab="projects"]').tap()
+    expect(page.locator(".phone-title")).to_be_visible()
+    shot(page, "m02-projects")
     page.locator(".project-row", has_text="Work").tap()
     page.wait_for_timeout(400)
+    expect(page.locator("#menu-toggle")).to_be_visible()
+    expect(page.locator('.tab[data-tab="projects"]')).to_have_class("tab active")
     shot(page, "m03-project")
+    page.locator("#menu-toggle").tap()
+    expect(page.locator(".phone-title")).to_be_visible()
+    page.locator(".project-row", has_text="Work").tap()
+    page.wait_for_timeout(300)
     # iOS only opens the keyboard if the title gets the focus within the tap.
     focused = page.evaluate("""() => {
         document.getElementById('fab').click();
@@ -246,6 +255,9 @@ def phone(browser):
     assert focused, "quick add title not focused synchronously by the FAB"
     page.wait_for_timeout(350)
     page.locator(".composer-title").fill("Phone task friday")
+    # Cancel and Add sit at the bottom of the screen, within thumb reach.
+    submit = page.locator(".modal.quick-add .composer-submit").bounding_box()
+    assert submit["y"] > 700, submit
     shot(page, "m04-quick-add")
     page.locator(".chip").nth(1).tap()
     page.wait_for_timeout(300)
@@ -261,7 +273,7 @@ def phone(browser):
     page.wait_for_timeout(300)
     shot(page, "m07-repeat-sheet")
     page.locator(".sheet-backdrop").tap(position={"x": 200, "y": 100})
-    page.locator(".detail-header .icon-button").tap()
+    page.locator(".detail-close").tap()
     page.wait_for_timeout(300)
     # Select mode from the ⋯ menu: a tap selects instead of opening.
     page.locator("#more-button").tap()
@@ -486,7 +498,8 @@ def workflows(browser):
     page.keyboard.press("q")
     page.locator(".composer-title").fill("Pay rent 2020-01-15")
     page.keyboard.press("Enter")
-    page.keyboard.press("Escape")
+    # Enter saves and closes; an Escape sent before that would ask to discard.
+    expect(page.locator(".modal.quick-add")).to_have_count(0)
     overdue = page.locator("section.task-group.overdue")
     expect(overdue.locator(".task-row", has_text="Pay rent")).to_have_count(1)
     shot(page, "w03-dark-upcoming")

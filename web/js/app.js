@@ -7,6 +7,8 @@ import { openModal, closeAllModals, closePopover, confirmDialog, promptDialog, o
 import { createUndo } from '/kit/js/undo.js';
 import { openHelp as showHelp } from '/kit/js/help.js';
 import { createLock, authApi } from '/kit/js/lock.js';
+import { tabBar } from '/kit/js/tabbar.js';
+import { edgeSwipe } from '/kit/js/swipe.js';
 import { datePicker } from './ui/datepicker.js';
 import { openPicker } from './ui/picker.js';
 import { createComposer, PRIORITY_LABELS } from './views/composer.js';
@@ -191,6 +193,7 @@ class App {
     s.selecting = false;
     if (!keepFocus) s.focus = 'tasks';
     if (!keepFocus) this.closeSidebar();
+    document.body.classList.remove('show-projects');
     s.tasks = [];
     s.sections = [];
     await this.refresh();
@@ -275,6 +278,7 @@ class App {
     for (const r of area.querySelectorAll('.task-row')) r.classList.toggle('selected', s.selection.has(r.dataset.id));
     this.renderStatus();
     this.renderSelectionBar();
+    this.renderTabs();
   }
 
   /** The bar of group actions, shown while tasks are selected or in select mode. */
@@ -1318,6 +1322,28 @@ class App {
   // Static chrome (header, sidebar, status bar)
   // -------------------------------------------------------------------------
 
+  // Phones: a tab bar (Inbox, Upcoming, Projects, Search) instead of the
+  // sidebar drawer; the sidebar becomes the Projects page, and a project is
+  // a page pushed from it (back: the header button or a swipe from the edge).
+
+  selectTab(id) {
+    if (id === 'search') return this.openSearch();
+    if (id === 'projects') return this.showProjects();
+    return this.switchView(id);
+  }
+
+  showProjects() {
+    document.body.classList.add('show-projects');
+    this.renderTabs();
+  }
+
+  renderTabs() {
+    const s = this.state;
+    const projects = document.body.classList.contains('show-projects') || s.view === 'project';
+    this.tabs?.setActive(projects ? 'projects' : s.view);
+    document.body.classList.toggle('in-project', s.view === 'project');
+  }
+
   openSidebar() {
     $('sidebar').classList.add('open');
     $('sidebar-backdrop').classList.add('open');
@@ -1333,14 +1359,24 @@ class App {
     setIcon('brand', 'brandLogo');
     setIcon('auth-menu', 'lock');
     setIcon('add-project', 'plus');
-    setIcon('menu-toggle', 'menu');
+    // Phones only: back from a project to the Projects page.
+    $('menu-toggle').append(icon('chevronLeft'), h('span', { class: 'back-label' }, 'Projects'));
     setIcon('sort-button', 'sort');
     setIcon('add-section', 'plus');
     setIcon('delete-project', 'trash');
     setIcon('more-button', 'more');
     setIcon('fab', 'plus');
 
-    $('menu-toggle').addEventListener('click', () => this.openSidebar());
+    $('menu-toggle').addEventListener('click', () => (isMobile() && this.state.view === 'project' ? this.showProjects() : this.openSidebar()));
+    this.tabs = tabBar($('tabbar'), [
+      { id: 'inbox', label: 'Inbox', icon: 'inbox' },
+      { id: 'upcoming', label: 'Upcoming', icon: 'calendar' },
+      { id: 'projects', label: 'Projects', icon: 'hash' },
+      { id: 'search', label: 'Search', icon: 'search' },
+    ], { onSelect: (id) => this.selectTab(id) });
+    edgeSwipe($('main'), () => {
+      if (isMobile() && this.state.view === 'project') this.showProjects();
+    });
     $('sidebar-backdrop').addEventListener('click', () => this.closeSidebar());
     $('add-project').addEventListener('click', () => this.createProject());
     $('auth-menu').addEventListener('click', () => this.lockScreen.menu($('auth-menu')));
@@ -1366,10 +1402,8 @@ class App {
       }
       openMenu($('more-button'), items);
     });
-    $('fab').addEventListener('click', () => this.openQuickAdd());
-    $('view-title').addEventListener('click', () => {
-      if (isMobile() && this.state.view !== 'inbox') this.switchView('inbox');
-    });
+    // On the Projects page the + adds a project, elsewhere a task.
+    $('fab').addEventListener('click', () => (document.body.classList.contains('show-projects') ? this.createProject() : this.openQuickAdd()));
     $('status-help').addEventListener('click', () => this.openHelp());
   }
 }

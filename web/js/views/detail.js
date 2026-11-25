@@ -68,7 +68,9 @@ export class TaskDetail {
     this.back = h('button', { type: 'button', class: 'detail-back', onclick: () => this.goBack() },
       h('span', { class: 'detail-back-arrow' }, '‹'), h('span', { class: 'detail-back-label' }));
     this.place = h('span', { class: 'detail-place' });
-    const closeButton = h('button', { type: 'button', class: 'icon-button', title: 'Close (Esc)', onclick: () => this.close() }, icon('close'));
+    // A cross on a desktop; on a phone, "‹ Back" at the left of the page.
+    const closeButton = h('button', { type: 'button', class: 'icon-button detail-close', title: 'Close (Esc)', attrs: { 'aria-label': 'Close' }, onclick: () => this.close() },
+      icon('close'), h('span', { class: 'detail-close-back' }, icon('chevronLeft'), 'Back'));
 
     this.check = h('button', { type: 'button', class: 'task-check large', title: 'Complete', onclick: () => this.complete() }, icon('check'));
     this.title = h('textarea', { class: 'detail-title', rows: 1, maxLength: 500, placeholder: 'Task name', attrs: { 'aria-label': 'Task name' } });

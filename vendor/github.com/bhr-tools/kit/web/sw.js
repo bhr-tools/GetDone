@@ -1,5 +1,5 @@
 // Service worker: keeps the files of the web app so that it starts without
-// network. The server prepends VERSION and FILES (cmd/server/main.go,
+// network. The server prepends VERSION and FILES (kit/server,
 // serviceWorker); VERSION changes with any file, which replaces the whole
 // cache at once, so a page never mixes two releases.
 const CACHE = `app-${VERSION}`;

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ben/get-done/internal/db"
-	"github.com/ben/get-done/internal/parser"
+	"github.com/bhr-tools/getdone/internal/db"
+	"github.com/bhr-tools/getdone/internal/parser"
 )
 
 // CSV columns, one row per task or section.
@@ -171,6 +171,9 @@ func (a *API) importCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// maxUploadBody caps a CSV import.
+const maxUploadBody = 10 << 20 // 10 MiB
 
 // readUpload returns the CSV bytes, sent either as a multipart "file" field
 // or as the raw request body.

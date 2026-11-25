@@ -1,8 +1,9 @@
 package db
 
 import (
-	"database/sql"
 	"slices"
+
+	kitstore "github.com/bhr-tools/kit/store"
 )
 
 // Items in a group of siblings (projects under one parent, sections of a
@@ -59,10 +60,5 @@ func queryIDs(q querier, query string, args ...any) ([]string, error) {
 
 // exists reports whether query returns at least one row.
 func exists(q querier, query string, args ...any) (bool, error) {
-	var one int
-	err := q.QueryRow(query, args...).Scan(&one)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return err == nil, err
+	return kitstore.Exists(q, query, args...)
 }

@@ -18,6 +18,26 @@
         "type": "github"
       }
     },
+    "kit": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1795640105,
+        "narHash": "sha256-q6WVMq0ustSbZ3Pi7ps03gGRzcJ07jz+od8j48XmQXA=",
+        "owner": "bhr-tools",
+        "repo": "kit",
+        "rev": "964f9a61f2368b23e81b92774744d99c4df9d4e5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "bhr-tools",
+        "repo": "kit",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1791260994,
@@ -37,6 +57,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "kit": "kit",
         "nixpkgs": "nixpkgs"
       }
     },

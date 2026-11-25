@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/bhr-tools/kit/offline"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,8 +11,12 @@ import (
 )
 
 type syncAnswer struct {
-	Results []syncResult `json:"results"`
-	ETag    string       `json:"etag"`
+	Results []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	} `json:"results"`
+	ETag string `json:"etag"`
 	// Raw lists, to look at null and values.
 	Snapshot struct {
 		Projects []map[string]any `json:"projects"`
@@ -171,7 +176,7 @@ func TestSyncClientIDValidation(t *testing.T) {
 
 func TestSyncTooManyOps(t *testing.T) {
 	c, _ := newClient(t, true)
-	ops := make([]map[string]any, maxSyncOps+1)
+	ops := make([]map[string]any, offline.MaxOps+1)
 	for i := range ops {
 		ops[i] = op(uuid.NewString(), "task.delete", map[string]any{"id": "x"})
 	}

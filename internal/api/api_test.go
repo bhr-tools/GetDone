@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ben/get-done/internal/db"
+	"github.com/bhr-tools/getdone/internal/db"
 )
 
 type client struct {
@@ -27,7 +27,11 @@ func newClient(t *testing.T, noAuth bool) (*client, *db.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return &client{t: t, handler: New(store, noAuth).Handler()}, store
+	a, err := New(store, noAuth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &client{t: t, handler: a.Handler()}, store
 }
 
 // do sends a request and decodes the JSON answer into out (when not nil).

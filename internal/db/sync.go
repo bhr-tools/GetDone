@@ -1,12 +1,6 @@
 package db
 
-import (
-	"database/sql"
-	"time"
-)
-
-// syncOpsKept is how long applied changes are remembered.
-const syncOpsKept = 30 * 24 * time.Hour
+import "database/sql"
 
 // Snapshot is all the data, flat, for clients that work offline.
 type Snapshot struct {
@@ -62,26 +56,4 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 		return err
 	})
 	return snap, err
-}
-
-// SyncOpStatus returns the recorded outcome of a change already applied.
-func (s *Store) SyncOpStatus(id string) (status, msg string, found bool, err error) {
-	err = s.db.QueryRow(`SELECT status, error FROM sync_ops WHERE id = ?`, id).Scan(&status, &msg)
-	if err == sql.ErrNoRows {
-		return "", "", false, nil
-	}
-	return status, msg, err == nil, err
-}
-
-// RecordSyncOp remembers the outcome of a change.
-func (s *Store) RecordSyncOp(id, status, msg string) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO sync_ops (id, status, error, applied_at) VALUES (?, ?, ?, ?)`,
-		id, status, msg, now())
-	return err
-}
-
-// PruneSyncOps forgets changes applied long ago.
-func (s *Store) PruneSyncOps() error {
-	_, err := s.db.Exec(`DELETE FROM sync_ops WHERE applied_at < ?`, now().Add(-syncOpsKept))
-	return err
 }

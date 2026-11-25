@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ben/get-done/internal/parser"
+	"github.com/bhr-tools/getdone/internal/parser"
 )
 
 const (

@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/ben/get-done/internal/db"
-	"github.com/ben/get-done/internal/parser"
+	"github.com/bhr-tools/getdone/internal/db"
+	"github.com/bhr-tools/getdone/internal/parser"
 )
 
 // ---------------------------------------------------------------------------

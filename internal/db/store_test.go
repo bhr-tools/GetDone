@@ -437,58 +437,6 @@ func TestSearchEscapesWildcards(t *testing.T) {
 	}
 }
 
-func TestPasswordsAndSessions(t *testing.T) {
-	s := openTest(t)
-	if has, _ := s.HasPassword(); has {
-		t.Fatal("fresh store must have no password")
-	}
-	if err := s.SetInitialPassword("abc"); !isInvalid(err) {
-		t.Fatal("short password must be rejected")
-	}
-	if err := s.SetInitialPassword(" secret "); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetInitialPassword("another"); !isInvalid(err) {
-		t.Fatal("initial password must not be overwritten")
-	}
-	if ok, _ := s.VerifyPassword(" secret "); !ok {
-		t.Fatal("password with spaces must be kept as typed")
-	}
-	if ok, _ := s.VerifyPassword("secret"); ok {
-		t.Fatal("wrong password accepted")
-	}
-	token, err := s.CreateSession()
-	if err != nil || !s.ValidateSession(token) {
-		t.Fatal("session not valid")
-	}
-	if err := s.SetPassword("new password"); err != nil {
-		t.Fatal(err)
-	}
-	if s.ValidateSession(token) {
-		t.Fatal("changing the password must sign out every session")
-	}
-}
-
-func TestLegacyPasswordIsUpgraded(t *testing.T) {
-	s := openTest(t)
-	salt := []byte("0123456789abcdef")
-	legacy := "30313233343536373839616263646566$" + hexKey(legacyKey("hunter2", salt))
-	if _, err := s.db.Exec(`INSERT INTO auth_settings (key, value) VALUES ('password_hash', ?)`, legacy); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := s.VerifyPassword("hunter2"); !ok {
-		t.Fatal("legacy hash must still verify")
-	}
-	var stored string
-	s.db.QueryRow(`SELECT value FROM auth_settings`).Scan(&stored)
-	if stored[:3] != "v2$" {
-		t.Fatalf("hash not upgraded: %s", stored)
-	}
-	if ok, _ := s.VerifyPassword("hunter2"); !ok {
-		t.Fatal("upgraded hash must verify")
-	}
-}
-
 func TestMigrationRepairsLegacyData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	raw, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
@@ -520,7 +468,9 @@ func TestMigrationRepairsLegacyData(t *testing.T) {
 	if child.ProjectID != "p1" || child.SectionID == nil || *child.SectionID != "s1" {
 		t.Errorf("subtask must be moved to its parent's place: %+v", child)
 	}
-	if s.ValidateSession("plain-token") {
+	var sessions int
+	s.db.QueryRow(`SELECT COUNT(*) FROM auth_sessions`).Scan(&sessions)
+	if sessions != 0 {
 		t.Error("unhashed sessions must be dropped")
 	}
 }

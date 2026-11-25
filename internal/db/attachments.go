@@ -3,12 +3,11 @@ package db
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
+
+	"github.com/bhr-tools/kit/files"
 )
 
 // MaxAttachmentSize is the largest accepted file.
@@ -43,76 +42,31 @@ func stamp() string {
 	return now().Format(time.RFC3339)
 }
 
-func cleanFilename(name string) string {
-	name = filepath.Base(strings.ReplaceAll(name, `\`, "/"))
-	name = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(name))
-	if name == "" || name == "." || name == "/" {
-		name = "file"
-	}
-	if r := []rune(name); len(r) > 200 {
-		name = string(r[:200])
-	}
-	return name
-}
-
-func (s *Store) attachmentPath(id string) string {
-	return filepath.Join(s.files, id)
-}
-
-// AddAttachment stores a file for a task. The content is streamed to a
-// temporary file, synced, then renamed, so a failed upload leaves nothing
-// behind. Files above MaxAttachmentSize are refused.
+// AddAttachment stores a file for a task (kit files: streamed, synced,
+// renamed, so a failed upload leaves nothing behind; empty files and files
+// above MaxAttachmentSize are refused).
 func (s *Store) AddAttachment(taskID, filename, contentType string, content io.Reader) (Attachment, error) {
 	if ok, err := exists(s.db, `SELECT 1 FROM tasks WHERE id = ?`, taskID); err != nil {
 		return Attachment{}, err
 	} else if !ok {
 		return Attachment{}, ErrNotFound
 	}
-	if err := os.MkdirAll(s.files, 0o750); err != nil {
-		return Attachment{}, fmt.Errorf("create attachments directory: %w", err)
-	}
-	tmp, err := os.CreateTemp(s.files, ".upload-*")
-	if err != nil {
-		return Attachment{}, err
-	}
-	defer os.Remove(tmp.Name()) // a no-op once renamed
-	size, err := io.Copy(tmp, io.LimitReader(content, MaxAttachmentSize+1))
-	if err == nil && size > MaxAttachmentSize {
-		err = invalid("Files are at most %d MB", MaxAttachmentSize>>20)
-	}
-	if err == nil && size == 0 {
-		err = invalid("The file is empty")
-	}
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return Attachment{}, err
-	}
-
 	a := Attachment{
 		ID:          newID(),
 		TaskID:      taskID,
-		Filename:    cleanFilename(filename),
+		Filename:    files.CleanFilename(filename),
 		ContentType: contentType,
-		Size:        size,
 		CreatedAt:   stamp(),
 	}
-	if err := os.Rename(tmp.Name(), s.attachmentPath(a.ID)); err != nil {
+	size, err := s.files.Save(a.ID, content)
+	if err != nil {
 		return Attachment{}, err
 	}
+	a.Size = size
 	_, err = s.db.Exec(`INSERT INTO attachments (`+attachmentColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
 		a.ID, a.TaskID, a.Filename, a.ContentType, a.Size, a.CreatedAt)
 	if err != nil {
-		os.Remove(s.attachmentPath(a.ID))
+		s.files.Remove(a.ID)
 		return Attachment{}, err
 	}
 	return a, nil
@@ -133,10 +87,7 @@ func (s *Store) OpenAttachment(id string) (Attachment, *os.File, error) {
 	if err != nil {
 		return Attachment{}, nil, err
 	}
-	f, err := os.Open(s.attachmentPath(a.ID))
-	if errors.Is(err, os.ErrNotExist) {
-		return Attachment{}, nil, ErrNotFound
-	}
+	f, err := s.files.Open(a.ID)
 	return a, f, err
 }
 
@@ -196,18 +147,13 @@ func (s *Store) PurgeAttachments(cutoff time.Time) (int, error) {
 		return 0, err
 	}
 	for _, id := range ids {
-		if err := os.Remove(s.attachmentPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := s.files.Remove(id); err != nil {
 			return 0, err
 		}
 		if _, err := s.db.Exec(`DELETE FROM attachments WHERE id = ?`, id); err != nil {
 			return 0, err
 		}
 	}
-	leftovers, _ := filepath.Glob(filepath.Join(s.files, ".upload-*"))
-	for _, f := range leftovers {
-		if info, err := os.Stat(f); err == nil && info.ModTime().Before(time.Now().Add(-time.Hour)) {
-			os.Remove(f)
-		}
-	}
+	s.files.CleanLeftovers()
 	return len(ids), nil
 }

@@ -4,9 +4,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    kit = {
+      url = "github:bhr-tools/kit";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, kit }:
     let
       # Supported systems
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
@@ -60,136 +64,13 @@
         }
       );
 
-      # Native multi-instance NixOS module for server / desktop
-      nixosModule = { config, lib, pkgs, ... }:
-        let
-          cfg = config.services.getdone;
-        in
-        {
-          options.services.getdone = {
-            enable = lib.mkEnableOption "Get Done Server & Web Daemon";
-
-            package = lib.mkOption {
-              type = lib.types.package;
-              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-              description = "The Get Done package to use.";
-            };
-
-            instances = lib.mkOption {
-              type = lib.types.attrsOf (lib.types.submodule ({ name, config, ... }: {
-                options = {
-                  port = lib.mkOption {
-                    type = lib.types.port;
-                    description = "HTTP listening port for this Get Done instance.";
-                  };
-
-                  host = lib.mkOption {
-                    type = lib.types.str;
-                    default = "127.0.0.1";
-                    description = "IP address on which the instance listens.";
-                  };
-
-                  dataDir = lib.mkOption {
-                    type = lib.types.path;
-                    default = if (name == "default" || name == "perso") then "/var/lib/getdone" else "/var/lib/getdone-${name}";
-                    description = "Data directory of the Get Done instance.";
-                  };
-
-                  dbPath = lib.mkOption {
-                    type = lib.types.path;
-                    default = "${config.dataDir}/getdone.db";
-                    description = "Path to the SQLite database for this instance.";
-                  };
-
-                  noAuth = lib.mkOption {
-                    type = lib.types.bool;
-                    default = false;
-                    description = "Disable password authentication.";
-                  };
-
-                  user = lib.mkOption {
-                    type = lib.types.str;
-                    default = "getdone";
-                    description = "System user under which to run the instance.";
-                  };
-
-                  group = lib.mkOption {
-                    type = lib.types.str;
-                    default = "getdone";
-                    description = "System group under which to run the instance.";
-                  };
-
-                  openFirewall = lib.mkOption {
-                    type = lib.types.bool;
-                    default = false;
-                    description = "Automatically open the port in the NixOS firewall.";
-                  };
-                };
-              }));
-              default = {};
-              description = "Definition of independent Get Done instances.";
-            };
-          };
-
-          config = lib.mkIf (cfg.enable && cfg.instances != {}) {
-            networking.firewall.allowedTCPPorts = lib.concatLists (
-              lib.mapAttrsToList (_: inst: lib.optional inst.openFirewall inst.port) cfg.instances
-            );
-
-            users.users = lib.mkIf (lib.any (inst: inst.user == "getdone") (lib.attrValues cfg.instances)) {
-              getdone = {
-                isSystemUser = true;
-                group = "getdone";
-                home = "/var/lib/getdone";
-                createHome = true;
-                description = "Get Done daemon user";
-              };
-            };
-
-            users.groups = lib.mkIf (lib.any (inst: inst.group == "getdone") (lib.attrValues cfg.instances)) {
-              getdone = {};
-            };
-
-            systemd.services = lib.mapAttrs' (name: inst:
-              let
-                serviceName = if name == "default" then "getdone" else "getdone-${name}";
-              in
-              lib.nameValuePair serviceName {
-                description = "Get Done Personal Task Manager Daemon (${name})";
-                after = [ "network.target" ];
-                wantedBy = [ "multi-user.target" ];
-
-                serviceConfig = {
-                  ExecStart = "${cfg.package}/bin/getdone -host ${inst.host} -port ${toString inst.port} -data-dir ${toString inst.dataDir} -db ${toString inst.dbPath}"
-                    + lib.optionalString inst.noAuth " -no-auth";
-                  Restart = "always";
-                  RestartSec = 3;
-                  User = inst.user;
-                  Group = inst.group;
-                  WorkingDirectory = toString inst.dataDir;
-                  ReadWritePaths = [ (toString inst.dataDir) ];
-                  # Hardening: the service only needs its data directory and the network.
-                  NoNewPrivileges = true;
-                  PrivateTmp = true;
-                  PrivateDevices = true;
-                  ProtectSystem = "strict";
-                  ProtectHome = true;
-                  ProtectKernelTunables = true;
-                  ProtectKernelModules = true;
-                  ProtectControlGroups = true;
-                  RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-                  RestrictNamespaces = true;
-                  LockPersonality = true;
-                  MemoryDenyWriteExecute = true;
-                  SystemCallArchitectures = "native";
-                } // lib.optionalAttrs (lib.hasPrefix "/var/lib/" (toString inst.dataDir)) {
-                  # systemd creates and owns the directory when it lives under /var/lib.
-                  StateDirectory = lib.removePrefix "/var/lib/" (toString inst.dataDir);
-                };
-              }
-            ) cfg.instances;
-          };
-        };
+      # Multi-instance NixOS module, shared by the apps (kit/nix/app-module.nix).
+      nixosModule = kit.lib.mkAppModule {
+        name = "getdone";
+        title = "Get Done";
+        package = pkgs: self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        dataDir = name: if name == "default" || name == "perso" then "/var/lib/getdone" else "/var/lib/getdone-${name}";
+      };
     in
     systemOutputs // {
       nixosModules.default = nixosModule;

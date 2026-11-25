@@ -4,37 +4,35 @@ package db
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	_ "modernc.org/sqlite"
+	"github.com/bhr-tools/kit/auth"
+	"github.com/bhr-tools/kit/files"
+	"github.com/bhr-tools/kit/httpx"
+	kitstore "github.com/bhr-tools/kit/store"
 )
 
 // InboxID is the fixed id of the default project. It always exists, cannot be
 // deleted and is not listed among the user's projects.
 const InboxID = "inbox"
 
-// ErrNotFound is returned when the requested row does not exist.
-var ErrNotFound = errors.New("not found")
+// ErrNotFound is returned when the requested row does not exist (the kit's,
+// so httpx.Fail answers 404).
+var ErrNotFound = httpx.ErrNotFound
 
 // ValidationError reports rejected input. Its message is meant for the user.
-type ValidationError struct{ Msg string }
-
-func (e *ValidationError) Error() string { return e.Msg }
+type ValidationError = httpx.ValidationError
 
 func invalid(format string, args ...any) error {
-	return &ValidationError{Msg: fmt.Sprintf(format, args...)}
+	return httpx.Invalid(format, args...)
 }
 
 // Store is safe for concurrent use.
 type Store struct {
 	db    *sql.DB
-	files string // directory of the attachment files, next to the database
+	files *files.Store // attachment files, next to the database
 }
 
 // querier is implemented by both *sql.DB and *sql.Tx.
@@ -46,24 +44,28 @@ type querier interface {
 
 // Open opens (creating it if needed) the database at path and migrates it.
 func Open(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return nil, fmt.Errorf("create database directory: %w", err)
-	}
-	dsn := path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
-	sqlDB, err := sql.Open("sqlite", dsn)
+	sqlDB, err := kitstore.Open(path, migrations)
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, err
 	}
-	// A single connection serializes every statement. For a personal task
-	// manager this costs nothing and rules out "database is locked" errors.
-	sqlDB.SetMaxOpenConns(1)
-
-	s := &Store{db: sqlDB, files: filepath.Join(filepath.Dir(path), "attachments")}
-	if err := s.migrate(); err != nil {
+	if _, err := sqlDB.Exec(`INSERT OR IGNORE INTO projects (id, parent_id, name, position, sort_by, sort_order)
+		VALUES ('inbox', NULL, 'Inbox', 0, 'manual', 'asc')`); err != nil {
 		sqlDB.Close()
-		return nil, fmt.Errorf("migrate database: %w", err)
+		return nil, fmt.Errorf("create inbox: %w", err)
 	}
-	return s, nil
+	// Links to the files are signed with the kit auth's key (auth_settings).
+	secret := func() ([]byte, error) { return auth.LinkSecret(sqlDB) }
+	return &Store{db: sqlDB, files: files.New(filepath.Join(filepath.Dir(path), "attachments"), MaxAttachmentSize, secret)}, nil
+}
+
+// DB is the database, shared with the kit's auth and offline sync.
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
+// Files stores and serves the attachment files.
+func (s *Store) Files() *files.Store {
+	return s.files
 }
 
 // Close closes the database.
@@ -78,19 +80,11 @@ func (s *Store) Ping() error {
 
 // tx runs fn inside a transaction, committed only if fn returns nil.
 func (s *Store) tx(fn func(tx *sql.Tx) error) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return kitstore.Tx(s.db, fn)
 }
 
-// migrations are applied in order; PRAGMA user_version records how many ran.
-// Never edit a released migration: append a new one instead.
+// migrations are applied in order by the kit (PRAGMA user_version records
+// how many ran). Never edit a released migration: append a new one instead.
 var migrations = []string{
 	// 1: base schema (identical to the schema of the first release).
 	`CREATE TABLE IF NOT EXISTS projects (
@@ -211,44 +205,14 @@ var migrations = []string{
 	`DROP TABLE IF EXISTS app_tokens;`,
 }
 
-func (s *Store) migrate() error {
-	var version int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return err
-	}
-	for i := version; i < len(migrations); i++ {
-		err := s.tx(func(tx *sql.Tx) error {
-			if _, err := tx.Exec(migrations[i]); err != nil {
-				return err
-			}
-			_, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1))
-			return err
-		})
-		if err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-	}
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO projects (id, parent_id, name, position, sort_by, sort_order)
-		VALUES ('inbox', NULL, 'Inbox', 0, 'manual', 'asc')`)
-	return err
-}
-
 func newID() string {
-	return uuid.NewString()
+	return kitstore.NewID()
 }
 
 // clientID returns id when it is a UUID chosen by a client (offline
 // creation), or a new id when id is empty.
 func clientID(id string) (string, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return newID(), nil
-	}
-	u, err := uuid.Parse(id)
-	if err != nil {
-		return "", invalid("invalid id")
-	}
-	return u.String(), nil
+	return kitstore.ClientID(id)
 }
 
 func now() time.Time {

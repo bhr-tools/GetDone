@@ -7,6 +7,9 @@
 //   { digit: true, run(n) {} } 1–9 and 0, and the same keys on AZERTY
 //                             (& é " ' ( - è _ ç à) without Shift
 //   { …, hidden: true }       left out of the ? help
+//   { keys, label, group }    without run: only listed in the ? help (keys a
+//                             dialog handles itself, such as Ctrl+Enter)
+//   { …, helpKeys: ['1', '2', '3'] }  what the help shows instead of keys
 //
 // Conventions of every app: u = undo, ? = help, / = search, Esc = clear.
 
@@ -37,8 +40,9 @@ export function createMatcher(getTable, { onTimeout } = {}) {
     pending = '';
   };
 
-  const find = (seq) => getTable().find((b) => b.keys?.includes(seq)) || null;
-  const startsLonger = (seq) => getTable().some((b) => b.keys?.some((k) => k.length > seq.length && k.startsWith(seq)));
+  const live = () => getTable().filter((b) => b.run);
+  const find = (seq) => live().find((b) => b.keys?.includes(seq)) || null;
+  const startsLonger = (seq) => live().some((b) => b.keys?.some((k) => k.length > seq.length && k.startsWith(seq)));
 
   function feed(key) {
     const seq = pending + key;
@@ -58,7 +62,7 @@ export function createMatcher(getTable, { onTimeout } = {}) {
     // A wrong second key: try it on its own.
     if (seq !== key) return feed(key);
     if (key in DIGITS) {
-      const binding = getTable().find((b) => b.digit);
+      const binding = live().find((b) => b.digit);
       if (binding) return { binding, digit: DIGITS[key] };
     }
     return null;
@@ -82,7 +86,8 @@ export function helpGroups(table) {
     if (b.hidden || !b.label) continue;
     const name = b.group || 'General';
     if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push({ label: b.label, keys: b.digit ? ['1–9'] : b.keys.map(displayKey) });
+    const keys = b.helpKeys ?? (b.digit ? ['1–9'] : b.keys);
+    groups.get(name).push({ label: b.label, keys: keys.map(displayKey) });
   }
   return [...groups].map(([group, rows]) => ({ group, rows }));
 }

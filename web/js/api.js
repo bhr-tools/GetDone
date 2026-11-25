@@ -2,14 +2,14 @@
 // throws an ApiError whose message can be shown to the user.
 
 import { todayISO } from './dates.js';
-import { ApiError } from './errors.js';
-import { SyncEngine, newId } from './sync/engine.js';
+import { ApiError } from '/kit/js/errors.js';
+import { SyncEngine, newId } from '/kit/js/sync/engine.js';
 import { EMPTY, fromSnapshot, projectTree, getProject, listSections, getTask, listTasks, searchTasks, counts } from './sync/state.js';
 import { reduce } from './sync/reduce.js';
 
 export { ApiError };
 
-/** Local data, kept in sync with the server (see sync/engine.js). */
+/** Local data, kept in sync with the server (see /kit/js/sync/engine.js). */
 export const engine = new SyncEngine({ dbName: 'getdone', empty: EMPTY, fromSnapshot, reduce });
 
 // Reads answer from the local state; errors become rejected promises, as
@@ -58,15 +58,6 @@ const del = (path) => request('DELETE', path);
 const id = encodeURIComponent;
 
 export const api = {
-  auth: {
-    status: () => get('/api/auth/status'),
-    setup: (password) => post('/api/auth/setup', { password }),
-    login: (password) => post('/api/auth/login', { password }),
-    logout: () => post('/api/auth/logout'),
-    changePassword: (oldPassword, newPassword) =>
-      post('/api/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
-  },
-
   projects: {
     list: () => local((s) => projectTree(s)),
     get: (projectId) => local((s) => getProject(s, projectId)),

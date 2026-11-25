@@ -5,7 +5,7 @@
 import { h, icon, autoGrow } from '../dom.js';
 import { formatDue, recurrenceLabel } from '../dates.js';
 import { parseQuickAdd } from '../quickadd.js';
-import { openPopover, closePopover, menuList, confirmDialog } from '../ui/overlay.js';
+import { openPopover, closePopover, menuList, confirmDialog } from '/kit/js/overlay.js';
 import { datePicker } from '../ui/datepicker.js';
 
 const MAX_TITLE = 500;

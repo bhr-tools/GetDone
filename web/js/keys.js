@@ -1,102 +1,73 @@
-// Vim-style keyboard control. One window-level handler decides, in order:
-//   1. Escape closes the topmost popover or dialog;
-//   2. while a dialog is open, other keys belong to it;
-//   3. while typing in a field (INSERT mode), keys belong to the field;
-//   4. otherwise keys are commands for the sidebar or the task list.
-// Components that handle a key themselves call preventDefault(), and this
-// handler then ignores it.
+// Vim-style keys of Get Done, as tables for the kit (kit/js/keys.js decides
+// when keys reach them: not while a dialog is open or a field is typed in).
+// The sidebar and the task list have their own table; ? lists the one in
+// force, generated from the labels below.
 
-import { escapeTopLayer, topModal, isPopoverOpen } from './ui/overlay.js';
-import { isTextInput } from './dom.js';
+import { initKeys as initKitKeys } from '/kit/js/keys.js';
 
-// AZERTY keyboards type these characters on the 1, 2 and 3 keys.
-const PRIORITY_KEYS = { 1: 1, '&': 1, 2: 2, 'é': 2, 3: 3, '"': 3 };
+const nav = (app) => [
+  { keys: ['/'], label: 'Search', group: 'Navigation', run: () => app.openSearch() },
+  { keys: ['q'], label: 'Quick add to the inbox', group: 'Tasks', run: () => app.openQuickAdd({ inbox: true }) },
+];
+
+function sidebarTable(app) {
+  return [
+    { keys: ['j', 'ArrowDown'], label: 'Next project', group: 'Sidebar', run: () => app.moveSidebarCursor(1) },
+    { keys: ['k', 'ArrowUp'], label: 'Previous project', group: 'Sidebar', run: () => app.moveSidebarCursor(-1) },
+    { keys: ['J'], label: 'Move project down', group: 'Sidebar', run: () => app.moveSidebarProject('down') },
+    { keys: ['K'], label: 'Move project up', group: 'Sidebar', run: () => app.moveSidebarProject('up') },
+    { keys: ['L'], label: 'Nest project', group: 'Sidebar', run: () => app.moveSidebarProject('indent') },
+    { keys: ['H'], label: 'Un-nest project', group: 'Sidebar', run: () => app.moveSidebarProject('outdent') },
+    { keys: ['Enter', 'l', 'ArrowRight', 'Escape'], label: 'Open the project', group: 'Sidebar', run: () => app.setFocus('tasks') },
+    { keys: ['h', 'ArrowLeft'], hidden: true, run: () => {} },
+    ...nav(app),
+  ];
+}
+
+function taskTable(app) {
+  return [
+    { keys: ['j', 'ArrowDown'], label: 'Next task', group: 'Navigation', run: () => app.moveCursor(1) },
+    { keys: ['k', 'ArrowUp'], label: 'Previous task', group: 'Navigation', run: () => app.moveCursor(-1) },
+    { keys: ['gg'], label: 'First task', group: 'Navigation', run: () => app.moveCursorTo(0) },
+    { keys: ['G'], label: 'Last task', group: 'Navigation', run: () => app.moveCursorTo(-1) },
+    { keys: ['h', 'ArrowLeft'], label: 'Sidebar', group: 'Navigation', run: () => app.setFocus('sidebar') },
+    { keys: ['l', 'ArrowRight'], hidden: true, run: () => app.setFocus('tasks') },
+    { keys: ['e', 'Enter'], label: 'Open the task', group: 'Navigation', run: () => app.openCursorDetail() },
+    { keys: ['Escape'], label: 'Clear the selection', group: 'Navigation', run: () => app.clearSelection() },
+    ...nav(app),
+    { keys: ['a'], label: 'Add a task below', group: 'Tasks', run: () => app.addBelowCursor() },
+    { keys: ['d'], label: 'Complete', group: 'Tasks', run: () => app.completeTasks(app.targetIds()) },
+    { keys: ['u'], label: 'Undo completion', group: 'Tasks', run: () => app.undo() },
+    { digit: true, helpKeys: ['1', '2', '3'], label: 'Priority (also & é " on AZERTY)', group: 'Tasks', run: (n) => n >= 1 && n <= 3 && app.setPriority(app.targetIds(), n) },
+    { keys: [' '], label: 'Select / unselect (or Ctrl+click, Shift+click)', group: 'Tasks', run: () => app.toggleSelection() },
+    { keys: ['t'], label: 'Due date', group: 'Tasks', run: () => app.pickDateForTasks(app.targetIds()) },
+    { keys: ['w'], label: 'Location', group: 'Tasks', run: () => app.pickLocationForTasks(app.targetIds()) },
+    { keys: ['m'], label: 'Move to project', group: 'Tasks', run: () => app.pickProjectForTasks(app.targetIds()) },
+    { keys: ['s'], label: 'Move to section (Upcoming: to a day)', group: 'Tasks', run: () => app.pickSectionForTasks(app.targetIds()) },
+    { keys: ['J'], label: 'Move down (manual order)', group: 'Tasks', run: () => app.reorderCursor(1) },
+    { keys: ['K'], label: 'Move up (manual order)', group: 'Tasks', run: () => app.reorderCursor(-1) },
+    { keys: ['L'], label: 'Make subtask', group: 'Tasks', run: () => app.indentCursor() },
+    { keys: ['H'], label: 'Un-nest', group: 'Tasks', run: () => app.outdentCursor() },
+    // Listed for the help only: the sidebar's own keys, and those the task
+    // details dialog handles itself.
+    { keys: ['J', 'K'], label: 'Move project down / up', group: 'Sidebar' },
+    { keys: ['L', 'H'], label: 'Nest / un-nest project', group: 'Sidebar' },
+    { keys: ['Enter'], label: 'Edit the title', group: 'Task details' },
+    { keys: ['a'], label: 'Add a subtask', group: 'Task details' },
+    { keys: ['f'], label: 'Attach a file', group: 'Task details' },
+    { keys: ['t', 'w'], label: 'Due date / location', group: 'Task details' },
+    { keys: ['C-Enter'], label: 'Save the description', group: 'Task details' },
+  ];
+}
+
+/** The keys in force: the sidebar's or the task list's. */
+export function keyTable(app) {
+  return app.state.focus === 'sidebar' ? sidebarTable(app) : taskTable(app);
+}
 
 export function initKeys(app) {
-  let pendingG = 0;
-
-  const updateMode = () => app.renderStatus(isTextInput(document.activeElement) ? 'INSERT' : null);
-  document.addEventListener('focusin', updateMode);
-  document.addEventListener('focusout', () => setTimeout(updateMode, 0));
-
-  window.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.isComposing) return;
-
-    if (e.key === 'Escape') {
-      if (escapeTopLayer()) {
-        e.preventDefault();
-        return;
-      }
-      if (isTextInput(document.activeElement)) {
-        e.preventDefault();
-        document.activeElement.blur();
-        return;
-      }
-    }
-    if (topModal() || isPopoverOpen() || isTextInput(e.target)) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-    const key = e.key;
-    const handled = app.state.focus === 'sidebar' ? sidebarKey(key) : taskKey(key);
-    if (handled) e.preventDefault();
+  initKitKeys({
+    table: () => keyTable(app),
+    onMode: (insert) => app.renderStatus(insert ? 'INSERT' : null),
   });
-
-  function sidebarKey(key) {
-    switch (key) {
-      case 'j': case 'ArrowDown': app.moveSidebarCursor(1); return true;
-      case 'k': case 'ArrowUp': app.moveSidebarCursor(-1); return true;
-      case 'J': app.moveSidebarProject('down'); return true;
-      case 'K': app.moveSidebarProject('up'); return true;
-      case 'L': app.moveSidebarProject('indent'); return true;
-      case 'H': app.moveSidebarProject('outdent'); return true;
-      case 'Enter': case 'l': case 'ArrowRight': case 'Escape': app.setFocus('tasks'); return true;
-      case 'h': case 'ArrowLeft': return true;
-      case '/': app.openSearch(); return true;
-      case 'q': app.openQuickAdd({ inbox: true }); return true;
-      case '?': app.openHelp(); return true;
-    }
-    return false;
-  }
-
-  function taskKey(key) {
-    if (key === 'g') {
-      if (Date.now() - pendingG < 1000) {
-        pendingG = 0;
-        app.moveCursorTo(0);
-      } else {
-        pendingG = Date.now();
-      }
-      return true;
-    }
-    pendingG = 0;
-    if (key in PRIORITY_KEYS) {
-      app.setPriority(app.targetIds(), PRIORITY_KEYS[key]);
-      return true;
-    }
-    switch (key) {
-      case 'j': case 'ArrowDown': app.moveCursor(1); return true;
-      case 'k': case 'ArrowUp': app.moveCursor(-1); return true;
-      case 'G': app.moveCursorTo(-1); return true;
-      case 'J': app.reorderCursor(1); return true;
-      case 'K': app.reorderCursor(-1); return true;
-      case 'L': app.indentCursor(); return true;
-      case 'H': app.outdentCursor(); return true;
-      case 'h': case 'ArrowLeft': app.setFocus('sidebar'); return true;
-      case 'l': case 'ArrowRight': app.setFocus('tasks'); return true;
-      case 'a': app.addBelowCursor(); return true;
-      case 'd': app.completeTasks(app.targetIds()); return true;
-      case 'u': app.undo(); return true;
-      case ' ': app.toggleSelection(); return true;
-      case 'm': app.pickProjectForTasks(app.targetIds()); return true;
-      case 's': app.pickSectionForTasks(app.targetIds()); return true;
-      case 't': app.pickDateForTasks(app.targetIds()); return true;
-      case 'w': app.pickLocationForTasks(app.targetIds()); return true;
-      case 'e': case 'Enter': app.openCursorDetail(); return true;
-      case '/': app.openSearch(); return true;
-      case 'q': app.openQuickAdd({ inbox: true }); return true;
-      case '?': app.openHelp(); return true;
-      case 'Escape': app.clearSelection(); return true;
-    }
-    return false;
-  }
 }

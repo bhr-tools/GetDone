@@ -34,7 +34,7 @@ func TestHandlerRoutes(t *testing.T) {
 	}{
 		{"/", "<title>Get Done</title>", 200},
 		{"/js/app.js", "class App", 200},
-		{"/css/style.css", "rose-pine.css", 200},
+		{"/css/style.css", "/kit/css/kit.css", 200},
 		{"/healthz", "ok", 200},
 		{"/api/projects", "[]", 200},
 		{"/embed.go", "", 404}, // source files are not served

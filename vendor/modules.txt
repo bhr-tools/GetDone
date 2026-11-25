@@ -1,4 +1,4 @@
-# github.com/bhr-tools/kit v0.1.1
+# github.com/bhr-tools/kit v0.1.6
 ## explicit; go 1.26.0
 github.com/bhr-tools/kit/auth
 github.com/bhr-tools/kit/files

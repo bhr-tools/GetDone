@@ -1,7 +1,7 @@
 // Local state, views and reducer of the offline mode.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ApiError } from '../../web/js/errors.js';
+import { ApiError } from '/kit/js/errors.js';
 import { fromSnapshot, listTasks, getTask, counts, searchTasks, projectTree, listSections } from '../../web/js/sync/state.js';
 import { reduce } from '../../web/js/sync/reduce.js';
 

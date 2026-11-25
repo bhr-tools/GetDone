@@ -5,7 +5,7 @@ import { h, icon, autoGrow, isTextInput, mapsUrl } from '../dom.js';
 import { api } from '../api.js';
 import { formatDue, recurrenceLabel, splitDue, WEEKDAYS } from '../dates.js';
 import { parseQuickAdd } from '../quickadd.js';
-import { openModal, openPopover, closePopover, menuList, confirmDialog, toast } from '../ui/overlay.js';
+import { openModal, openPopover, closePopover, menuList, confirmDialog, toast } from '/kit/js/overlay.js';
 import { datePicker } from '../ui/datepicker.js';
 import { taskRow } from './tasks.js';
 import { PRIORITY_LABELS } from './composer.js';
@@ -69,7 +69,6 @@ export class TaskDetail {
       h('span', { class: 'detail-back-arrow' }, '‹'), h('span', { class: 'detail-back-label' }));
     this.place = h('span', { class: 'detail-place' });
     const closeButton = h('button', { type: 'button', class: 'icon-button', title: 'Close (Esc)', onclick: () => this.close() }, icon('close'));
-    const handle = h('div', { class: 'sheet-handle' });
 
     this.check = h('button', { type: 'button', class: 'task-check large', title: 'Complete', onclick: () => this.complete() }, icon('check'));
     this.title = h('textarea', { class: 'detail-title', rows: 1, maxLength: 500, placeholder: 'Task name', attrs: { 'aria-label': 'Task name' } });
@@ -120,7 +119,7 @@ export class TaskDetail {
     });
 
     const body = h('div', { class: 'detail' },
-      h('header', { class: 'detail-header' }, handle, this.back, this.place, h('div', { class: 'spacer' }), closeButton),
+      h('header', { class: 'detail-header' }, this.back, this.place, h('div', { class: 'spacer' }), closeButton),
       h('div', { class: 'detail-body' },
         h('div', { class: 'detail-main' },
           h('div', { class: 'detail-title-row' }, this.check, this.title),
@@ -146,7 +145,6 @@ export class TaskDetail {
     });
     this.modal.el.addEventListener('keydown', (e) => this.onKey(e));
     this.enableFileDrop(this.modal.el);
-    enableSheetGestures(this.modal.el, handle, () => this.close());
   }
 
   /** Shows this.task. Text fields being edited are left alone unless resetText. */
@@ -573,40 +571,4 @@ export class TaskDetail {
       this.locationInput?.select();
     }
   }
-}
-
-/** Phone bottom sheet: drag the handle down to close, up to expand. */
-function enableSheetGestures(sheet, handle, close) {
-  let startY = 0;
-  let dy = 0;
-  let dragging = false;
-  const header = handle.parentElement;
-  header.addEventListener('touchstart', (e) => {
-    if (e.target.closest('button')) return;
-    dragging = true;
-    startY = e.touches[0].clientY;
-    dy = 0;
-    sheet.style.transition = 'none';
-  }, { passive: true });
-  header.addEventListener('touchmove', (e) => {
-    if (!dragging) return;
-    dy = e.touches[0].clientY - startY;
-    if (dy > 0 || !sheet.classList.contains('expanded')) sheet.style.transform = `translateY(${Math.max(dy, -40)}px)`;
-    if (e.cancelable) e.preventDefault();
-  }, { passive: false });
-  const end = () => {
-    if (!dragging) return;
-    dragging = false;
-    sheet.style.transition = '';
-    sheet.style.transform = '';
-    if (dy > 90) {
-      if (sheet.classList.contains('expanded')) sheet.classList.remove('expanded');
-      else close();
-    } else if (dy < -40) {
-      sheet.classList.add('expanded');
-    }
-  };
-  header.addEventListener('touchend', end);
-  header.addEventListener('touchcancel', end);
-  handle.addEventListener('click', () => sheet.classList.toggle('expanded'));
 }

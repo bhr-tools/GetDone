@@ -4,6 +4,9 @@
 //
 //   const undo = createUndo({ toast });
 //   const entry = undo.push({ label: 'Task completed', undo: () => api.reopen(id) });
+//   entry.undo may resolve to false when it failed and already said so (it
+//   stays on the stack); `undone` is the message once undone (default
+//   "Undone: <label>").
 //   …on failure: entry.cancel();
 //   key u: undo.run();
 //
@@ -38,13 +41,16 @@ export function createUndo({ toast = () => {}, limit = UNDO_LIMIT } = {}) {
       return false;
     }
     try {
-      await entry.undo();
+      if (await entry.undo() === false) {
+        stack.push(entry); // the app reported why; keep it to try again
+        return false;
+      }
     } catch (err) {
       stack.push(entry); // keep it to try again
       toast(err?.message || 'Could not undo', { type: 'error' });
       return false;
     }
-    toast(`Undone: ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`);
+    toast(entry.undone ?? `Undone: ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`, { type: 'success' });
     return true;
   }
 

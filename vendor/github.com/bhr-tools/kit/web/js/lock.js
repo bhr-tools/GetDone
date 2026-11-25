@@ -9,6 +9,8 @@
 //     onUnlocked: async () => {},    // load the data
 //   });
 //   await lock.start();              // shows setup or login when needed
+//   (an app with its own start-up, offline for instance, calls
+//   lock.showSetup() / lock.showLogin() itself)
 //   lockButton.onclick = () => lock.menu(lockButton);
 //   api 401 → lock.showLogin();
 
@@ -98,7 +100,7 @@ export function createLock({ appName, beforeLock = async () => true, afterLock =
         { label: 'Master password', placeholder: 'At least 4 characters', autocomplete: 'new-password' },
         { label: 'Confirm password', placeholder: 'Repeat the password', autocomplete: 'new-password' },
       ],
-      submitLabel: 'Set password',
+      submitLabel: 'Set password and continue',
       dismissible: false,
       onSubmit: async ([password, confirm]) => {
         if (password.length < 4) return 'The password must be at least 4 characters long.';
@@ -171,6 +173,7 @@ export function createLock({ appName, beforeLock = async () => true, afterLock =
       return showLogin();
     },
 
+    showSetup,
     showLogin,
     changePassword,
     lock,

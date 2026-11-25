@@ -146,6 +146,6 @@ All data (projects, sections, tasks, password hash and sessions) is stored in a 
 
 ```
 go vet ./... && go test ./...           # server
-node --test tests/js/*.test.mjs         # quick add parser, dates, offline state and sync engine
+node --import ./vendor/github.com/bhr-tools/kit/web/node/register.mjs --test "tests/js/*.test.mjs"   # quick add parser, dates, offline state
 sh tests/e2e/run.sh                     # browser tests (Playwright from nixpkgs)
 ```

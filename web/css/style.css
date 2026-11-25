@@ -1,46 +1,18 @@
-@import url("./rose-pine.css");
+/* The kit first (palette, roles, scales, dialogs, menus, toasts, drag),
+   then what is Get Done's own. */
+@import url("/kit/css/kit.css");
 
 /* ==========================================================================
    Base
    ========================================================================== */
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body { height: 100%; }
 
 body {
   display: flex;
   flex-direction: column;
   height: 100dvh;
   overflow: hidden;
-  background: var(--rp-base);
-  color: var(--rp-text);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: transparent;
 }
 
-button, input, textarea, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: none; border: none; }
-button:disabled { cursor: default; opacity: 0.6; }
-a { color: inherit; }
-[hidden] { display: none !important; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-kbd {
-  display: inline-block;
-  min-width: 1.6em;
-  padding: 0 5px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--rp-overlay);
-  color: var(--rp-gold);
-  font: 600 0.72rem/1.6 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  text-align: center;
-}
-
-.icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.icon svg { display: block; }
 .icon-brandLogo { color: var(--rp-pine); }
 .icon-today { color: var(--rp-foam); }
 .icon-tomorrow { color: var(--rp-gold); }
@@ -48,63 +20,14 @@ kbd {
 .icon-nextWeek { color: var(--accent); }
 .icon-noDate { color: var(--danger); }
 
-* { scrollbar-width: thin; scrollbar-color: var(--rp-hl-high) transparent; }
-
 /* ==========================================================================
    Controls
    ========================================================================== */
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--rp-subtle);
-  font-size: 0.82rem;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
-}
-.button:hover { background: var(--rp-overlay); color: var(--rp-text); }
-.button.primary, .button.danger { border-color: transparent; color: var(--on-accent); font-weight: 600; }
-.button.primary { background: var(--accent); }
-.button.danger { background: var(--danger); }
-.button.primary:hover:not(:disabled), .button.danger:hover:not(:disabled) { filter: brightness(1.08); }
-.button.wide { width: 100%; height: 38px; }
-
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  color: var(--rp-muted);
-  font-size: 1.1rem;
-  line-height: 1;
-  transition: background-color 0.15s, color 0.15s;
-}
 .icon-button:hover, .icon-button.is-open { background: var(--rp-overlay); color: var(--rp-text); }
 
-.input {
-  width: 100%;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--rp-overlay);
-  font-size: 0.875rem;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.input:focus { border-color: var(--accent); }
-.input::placeholder { color: var(--rp-muted); }
 select.input { cursor: pointer; }
+.icon-button.is-open { background: var(--surface-hover); color: var(--text); }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-label {
@@ -479,46 +402,10 @@ select.input { cursor: pointer; }
    Popovers and menus
    ========================================================================== */
 
-.popover {
-  position: fixed;
-  z-index: 1500;
-  max-width: min(340px, calc(100vw - 16px));
-  padding: 6px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--rp-surface);
-  box-shadow: var(--shadow);
-}
-.popover.scrollable { max-height: 320px; }
-.sheet-handle, .sheet-title { display: none; }
-.sheet-backdrop { position: fixed; inset: 0; z-index: 1400; background: var(--backdrop); }
-
-.menu { display: flex; flex-direction: column; gap: 1px; }
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  color: var(--rp-text);
-  font-size: 0.84rem;
-  text-align: left;
-  transition: background-color 0.12s;
-}
-.menu-item:hover { background: var(--rp-overlay); }
-.menu-item.selected { color: var(--accent); font-weight: 600; }
-.menu-item.danger { color: var(--danger); }
-.menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .menu-item.p1 .icon { color: var(--rp-love); }
 .menu-item.p2 .icon { color: var(--rp-gold); }
 .menu-item.p3 .icon { color: var(--rp-foam); }
 .menu-item > .icon { color: var(--rp-subtle); }
-.menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-hint { color: var(--rp-muted); font-size: 0.74rem; }
-.menu-separator { height: 1px; margin: 4px 2px; background: var(--border); }
 
 .popover-form { display: flex; flex-direction: column; gap: 8px; padding: 6px 4px 4px; }
 .popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -555,57 +442,6 @@ select.input { cursor: pointer; }
    Modals
    ========================================================================== */
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--backdrop);
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-.modal-overlay.open { opacity: 1; }
-
-.modal {
-  display: flex;
-  flex-direction: column;
-  width: min(440px, 100%);
-  max-height: 88dvh;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--rp-surface);
-  box-shadow: var(--shadow);
-  transform: translateY(8px) scale(0.98);
-  transition: transform 0.18s ease;
-}
-.modal-overlay.open .modal { transform: none; }
-.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 14px 12px 20px; }
-.modal-title { font-size: 1.05rem; font-weight: 700; }
-.modal-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 0 20px 18px; overflow-y: auto; }
-.modal-header + .modal-body { padding-top: 2px; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); }
-.dialog-message { color: var(--rp-subtle); font-size: 0.9rem; }
-.modal.help { width: min(680px, 100%); }
-.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
-.help-grid h3 { margin: 10px 0 4px; }
-.help-grid h3:first-child { margin-top: 0; }
-.help-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.84rem; }
-.help-keys { display: flex; gap: 4px; }
-
-.auth-form { display: flex; flex-direction: column; gap: 14px; }
-.form-error {
-  padding: 8px 12px;
-  border: 1px solid var(--danger);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
-  font-size: 0.84rem;
-}
-
 /* Picker (search, move to…) */
 .modal.picker { width: min(600px, 100%); align-self: flex-start; margin-top: 10dvh; }
 .modal.picker .modal-body { gap: 0; padding: 0; }
@@ -633,7 +469,7 @@ select.input { cursor: pointer; }
 .detail { display: flex; flex-direction: column; height: 100%; }
 .detail-header { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--border); }
 .spacer { flex: 1; }
-.modal:focus { outline: none; }
+
 .detail-place { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: var(--rp-subtle); font-size: 0.84rem; text-overflow: ellipsis; white-space: nowrap; }
 .detail-place .icon { color: var(--rp-muted); }
 .detail-back {
@@ -796,7 +632,7 @@ body > .drag-ghost { /* body > : wins over .project-row { position: relative } *
   transform: rotate(-1deg);
 }
 .drag-ghost .task-meta, .drag-ghost .task-description, .drag-ghost .project-more { display: none; }
-.dragging { opacity: 0.35; }
+
 .drag-hidden { display: none !important; }
 body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
 
@@ -805,29 +641,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .drop-into { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; outline: 1px dashed var(--accent); outline-offset: -1px; }
 /* Where a dragged task or project lands: one line in the gap between two
    rows, starting with a dot, indented to the depth it will have. */
-.drop-line {
-  position: fixed;
-  z-index: 2001;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 0 1px 1px 0;
-  background: var(--accent);
-  pointer-events: none;
-}
+
 /* The dot sits where the circle of a task (or a project's icon) at this
    depth would be. */
-.drop-line::before {
-  content: "";
-  position: absolute;
-  top: -4px;
-  left: -5px;
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--rp-base);
-}
+
 .project-row { position: relative; }
 .task-group.drop-before { box-shadow: 0 -3px 0 var(--accent) !important; }
 .task-group.drop-after { box-shadow: 0 3px 0 var(--accent) !important; }
@@ -863,41 +680,6 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .status-help { color: inherit; font-size: inherit; }
 
 .fab { display: none; }
-
-.toast {
-  position: fixed;
-  right: 24px;
-  bottom: 44px;
-  z-index: 3000;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: 10px 12px 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--rp-surface);
-  box-shadow: var(--shadow);
-  font-size: 0.86rem;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(10px);
-  transition: opacity 0.2s, transform 0.2s;
-}
-.toast.open { opacity: 1; pointer-events: auto; transform: none; }
-.toast.error { border-color: var(--danger); color: var(--danger); }
-.toast.success { border-color: var(--rp-foam); }
-.toast-message { flex: 1; min-width: 0; }
-.toast-action {
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--rp-iris);
-  border-radius: 6px;
-  color: var(--rp-iris);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-.toast-action:hover { background: var(--rp-iris); color: var(--on-accent); }
 
 /* Group actions on the selected tasks. */
 .selection-bar {
@@ -1016,76 +798,60 @@ body.selecting .task-row.selected > .task-check { border-color: var(--rp-iris); 
     border-radius: 16px;
     transform: none;
   }
-  @keyframes selection-in { from { opacity: 0; transform: translateY(12px); } }
+  
   .selection-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .selection-label { display: none; }
   .selection-action { width: 40px; height: 40px; justify-content: center; padding: 0; }
   .selection-action .icon svg { width: 18px; height: 18px; }
   body.has-modal .selection-bar { display: none; }
   body.selecting .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
-  .toast { right: 16px; left: 16px; bottom: calc(88px + env(safe-area-inset-bottom)); max-width: none; }
+  
 
   /* Popovers become bottom sheets. */
-  .popover.sheet {
-    inset: auto 0 0 0;
-    width: 100%;
-    max-width: none;
-    max-height: 85dvh;
-    padding: 8px 14px calc(16px + env(safe-area-inset-bottom));
-    border-width: 1px 0 0;
-    border-radius: 18px 18px 0 0;
-    animation: sheet-up 0.25s cubic-bezier(0.3, 1, 0.3, 1);
-  }
+  
   /* Above the iOS keyboard (--vv-* are set in overlay.js). */
-  .popover.sheet { bottom: var(--vv-bottom, 0); max-height: min(85dvh, var(--vv-height, 100dvh)); }
-  .sheet .sheet-handle, .detail .sheet-handle {
-    display: block;
-    width: 36px;
-    height: 4px;
-    margin: 0 auto 10px;
-    border-radius: 2px;
-    background: var(--rp-muted);
-    opacity: 0.6;
-  }
-  .sheet .sheet-title { display: block; padding: 0 4px 10px; font-size: 1rem; font-weight: 700; }
-  .sheet .menu-item { min-height: 46px; font-size: 0.95rem; }
+  
+  
+  
+  
   .sheet .datepicker { width: 100%; }
   .sheet .calendar-day { width: 40px; height: 40px; font-size: 0.9rem; }
 
   /* Bottom sheet dialogs */
-  .modal-overlay { padding: 0; top: var(--vv-top, 0); bottom: auto; height: var(--vv-height, 100%); }
-  .modal { max-height: min(88dvh, var(--vv-height, 100dvh)); }
-  .modal { width: min(440px, calc(100% - 24px)); }
-  .modal.picker { width: calc(100% - 24px); margin-top: max(12px, env(safe-area-inset-top)); }
-  .modal-overlay:has(.quick-add), .modal-overlay:has(.detail-modal) { align-items: flex-end; }
-  .modal.quick-add, .modal.detail-modal {
-    width: 100%;
-    border-radius: 18px 18px 0 0;
-    animation: sheet-up 0.25s cubic-bezier(0.3, 1, 0.3, 1);
-  }
-  .modal.quick-add .composer {
-    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-    border-width: 1px 0 0;
-    border-radius: 18px 18px 0 0;
-  }
-  .modal.quick-add .composer-cancel, .modal.quick-add .composer-submit-label { display: none; }
-  .modal.quick-add .composer-submit { width: 38px; height: 38px; padding: 0; border-radius: 50%; }
-  .modal.quick-add .composer-submit-icon { display: inline-flex; }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
-  .modal.detail-modal { height: 78dvh; transition: height 0.25s ease, transform 0.25s ease; }
-  .modal.detail-modal.expanded { height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+  
+  
   .detail-header { position: relative; padding-top: 14px; }
-  .detail .sheet-handle { position: absolute; top: 6px; left: 50%; margin: 0; transform: translateX(-50%); }
+  
   .detail-body { display: block; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
   .detail-main { padding: 16px; overflow: visible; }
   .detail-fields { padding: 16px; overflow: visible; border-top: 1px solid var(--border); border-left: none; }
   .field-button { height: 42px; }
-  .help-grid { grid-template-columns: 1fr; }
-}
+  
 
-@keyframes sheet-up {
-  from { transform: translateY(100%); }
-  to { transform: none; }
+  /* Dialogs are full-screen pages (kit); these keep their own header. */
+  .modal.picker, .modal.quick-add, .modal.detail-modal {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    align-self: stretch;
+    border: none;
+    border-radius: 0;
+    background: var(--bg);
+  }
+  .modal.quick-add .composer { margin: 0; border: none; border-radius: 0; box-shadow: none; padding-top: max(14px, env(safe-area-inset-top)); }
+  .detail-header { padding-top: max(8px, env(safe-area-inset-top)); }
+  @keyframes selection-in { from { opacity: 0; transform: translateY(12px); } }
 }
 
 @media (prefers-reduced-motion: reduce) {

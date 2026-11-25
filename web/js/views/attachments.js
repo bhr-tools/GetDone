@@ -5,7 +5,7 @@
 
 import { h, icon } from '../dom.js';
 import { api } from '../api.js';
-import { toast } from '../ui/overlay.js';
+import { toast } from '/kit/js/overlay.js';
 
 export function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;

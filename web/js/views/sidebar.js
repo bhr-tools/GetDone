@@ -1,7 +1,7 @@
 // Sidebar: inbox and upcoming entries with their counts, and the project tree.
 
 import { h, icon } from '../dom.js';
-import { openMenu } from '../ui/overlay.js';
+import { openMenu } from '/kit/js/overlay.js';
 
 export function renderSidebar(app, nav, tree) {
   const s = app.state;

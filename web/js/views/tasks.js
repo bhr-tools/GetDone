@@ -2,7 +2,7 @@
 
 import { h, icon, mapsUrl } from '../dom.js';
 import { addDays, formatDue, parseISO, recurrenceLabel, WEEKDAYS_SHORT, MONTHS_SHORT, splitDue } from '../dates.js';
-import { openMenu } from '../ui/overlay.js';
+import { openMenu } from '/kit/js/overlay.js';
 
 /**
  * Renders the current view into `area`. Returns the tasks in display order

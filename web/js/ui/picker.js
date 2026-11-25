@@ -2,7 +2,7 @@
 // navigated with the arrows and Enter.
 
 import { h, icon } from '../dom.js';
-import { openModal } from './overlay.js';
+import { openModal } from '/kit/js/overlay.js';
 
 /**
  * Opens a picker.

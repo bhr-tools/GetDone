@@ -9,7 +9,7 @@
 // task is completed, so an undo shows them again.
 // Every read function returns new objects: callers may modify them freely.
 
-import { ApiError } from '../errors.js';
+import { ApiError } from '/kit/js/errors.js';
 import { addDays, todayISO } from '../dates.js';
 import { validDue } from '../recurrence.js';
 

@@ -147,7 +147,8 @@ const modals = []; // stack, top last
  *   title     header text (omit for a custom header inside `body`; '' for a
  *             header with no title)
  *   back      text of the close button on phones (default "Cancel" for
- *             forms, "Back" otherwise)
+ *             forms, "Back" otherwise). With a footer and no `back`, phones
+ *             leave it out: the footer's own Cancel / Done is in thumb reach
  *   action    { label, run }: a header button (phones: on the right)
  *   body      element(s)
  *   footer    element(s), typically buttons
@@ -159,11 +160,12 @@ const modals = []; // stack, top last
  */
 export function openModal({ title, back, action, body, footer, className = '', dismissible = true, autofocus = true, onClose, onEscape }) {
   // Pages that only show something go back; forms are cancelled.
+  const footerCloses = back == null && !!footer;
   back ??= action || footer ? 'Cancel' : 'Back';
   const actionButton = action
     ? h('button', { type: 'button', class: 'modal-action', onclick: () => action.run() }, action.label)
     : null;
-  const box = h('div', { class: ['modal', className], tabIndex: -1, attrs: { role: 'dialog', 'aria-modal': 'true' } },
+  const box = h('div', { class: ['modal', className, footerCloses && 'footer-closes'], tabIndex: -1, attrs: { role: 'dialog', 'aria-modal': 'true' } },
     title != null ? h('div', { class: 'modal-header' },
       dismissible
         ? h('button', { type: 'button', class: 'modal-close', title: 'Close (Esc)', attrs: { 'aria-label': back }, onclick: () => handle.onEscape() },

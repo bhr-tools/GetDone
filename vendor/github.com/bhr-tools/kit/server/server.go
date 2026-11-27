@@ -192,15 +192,19 @@ func SecurityHeaders(csp string, next http.Handler) http.Handler {
 	})
 }
 
+// Timeout bounds reading a request and writing its answer. An app that
+// receives large uploads or holds long polls raises it before Run.
+var Timeout = 60 * time.Second
+
 // Run serves h on addr until SIGINT or SIGTERM, then shuts down cleanly.
 func Run(name, addr string, h http.Handler) {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		ReadTimeout:       Timeout,
+		WriteTimeout:      Timeout,
+		IdleTimeout:       2 * Timeout,
 	}
 	go func() {
 		log.Printf("%s listening on http://%s", name, addr)

@@ -13,6 +13,7 @@
   max-width: min(340px, calc(100vw - 16px));
   padding: 6px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -99,7 +100,7 @@
 .modal-action:disabled { opacity: 0.5; }
 .modal-spacer { display: none; }
 
-.modal-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 0 20px 18px; overflow-y: auto; }
+.modal-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 0 20px 18px; overflow-y: auto; overscroll-behavior: contain; }
 .modal-header + .modal-body { padding-top: 2px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); }
 .dialog-message { color: var(--text-muted); font-size: var(--fs); }
@@ -196,6 +197,7 @@
   .modal-close:hover { background: none; color: var(--accent); }
   .modal-close .close-text { display: inline-flex; align-items: center; gap: 2px; }
   .modal-close > .icon-close { display: none; }
+  .modal.footer-closes .modal-close { visibility: hidden; }
   .modal-title { order: 1; max-width: 52vw; overflow: hidden; font-size: var(--fs-lg); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
   .modal-action, .modal-spacer { order: 2; justify-self: end; }
   .modal-spacer { display: block; }
@@ -206,7 +208,9 @@
   .modal-footer .button { flex: 1; }
 
   .toast { right: 16px; left: 16px; bottom: calc(16px + var(--tabbar-h, 0px) + env(safe-area-inset-bottom)); max-width: none; }
-  body.has-modal .toast { bottom: calc(16px + env(safe-area-inset-bottom)); }
+  /* Above a page's bottom bar (Cancel / Save), never over it. */
+  body.has-modal .toast { bottom: calc(var(--vv-bottom, 0px) + 16px + env(safe-area-inset-bottom)); }
+  body.has-modal:has(.modal-footer) .toast { bottom: calc(var(--vv-bottom, 0px) + 76px + env(safe-area-inset-bottom)); }
 }
 
 @keyframes kit-sheet-up {

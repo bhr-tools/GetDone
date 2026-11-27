@@ -3,7 +3,7 @@ module github.com/bhr-tools/getdone
 go 1.26.0
 
 require (
-	github.com/bhr-tools/kit v0.1.6
+	github.com/bhr-tools/kit v0.1.16
 	github.com/google/uuid v1.6.0
 )
 

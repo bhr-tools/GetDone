@@ -17,10 +17,12 @@ function preventScroll(e) {
  *   onEnd(point)              dropped
  *   onClick(point)            released without dragging
  *   onCancel()                interrupted (Escape, pointercancel)
+ *   immediate                 touch drags at once, without the long press
+ *                             (a drag handle, which does not scroll)
  * point: { x, y, copy, event }
  */
-export function follow(down, { onStart, onMove, onEnd, onClick, onCancel }) {
-  const touch = down.pointerType === 'touch';
+export function follow(down, { onStart, onMove, onEnd, onClick, onCancel, immediate = false }) {
+  const touch = down.pointerType === 'touch' && !immediate;
   const origin = { x: down.clientX, y: down.clientY };
   let dragging = false;
   let armed = !touch; // touch: armed by the long press

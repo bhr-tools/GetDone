@@ -13,6 +13,19 @@ import { listGaps, nearestGap, pickDepth, resolveDrop } from './dropgaps.js';
 
 let line = null;
 let ghost = null;
+let dragging = false;
+let deferred = null;
+
+/**
+ * True while a row is dragged: `render` then runs once it is dropped, so
+ * that a list drawn again (a sync) does not pull the row from under the
+ * pointer.
+ */
+export function deferWhileDragging(render) {
+  if (!dragging) return false;
+  deferred = render;
+  return true;
+}
 
 function showLine(pos) {
   line ??= document.body.appendChild(h('div', { class: 'drop-line', hidden: true }));
@@ -51,11 +64,12 @@ function lightTarget(current, next) {
  * Starts dragging a row from a pointerdown. Shared by sortable and
  * draggable; `gaps(point)` (sortable) returns where the line goes, or null.
  */
-function drag(down, row, { key, label, gaps, targets, onDrop, onDropOn, onClick }) {
+function drag(down, row, { key, label, gaps, targets, onDrop, onDropOn, onClick, immediate }) {
   let over = null;
   let place = null;
   follow(down, {
     onStart(p) {
+      dragging = true;
       row.classList.add('dragging');
       showGhost(label?.(row), p);
     },
@@ -74,6 +88,7 @@ function drag(down, row, { key, label, gaps, targets, onDrop, onDropOn, onClick 
     },
     onCancel: cleanup,
     onClick: (p) => onClick?.(p),
+    immediate,
   });
   function cleanup() {
     row.classList.remove('dragging');
@@ -82,12 +97,18 @@ function drag(down, row, { key, label, gaps, targets, onDrop, onDropOn, onClick 
     place = null;
     showLine(null);
     showGhost(label?.(row), null);
+    dragging = false;
+    const render = deferred;
+    deferred = null;
+    render?.();
   }
 }
 
 /**
  * Makes the rows of `container` (children with data-key) reorderable.
- *   handle      selector of the part to grab (default: the whole row)
+ *   handle      selector of the part to grab (default: the whole row); on
+ *               touch screens a handle drags at once (no long press): give
+ *               it the class drag-handle, which stops it from scrolling
  *   indent      px per nesting level (0: a flat list)
  *   depthOf(row)  nesting depth of a row (default 0)
  *   hidden(key, row)  rows that move with the dragged one (its children):
@@ -128,17 +149,19 @@ export function sortable(container, { handle = null, indent = 0, depthOf = () =>
         result: { index: gap.index, depth, ...resolveDrop(rows, gap.index, depth) },
       };
     };
-    drag(down, row, { key, label, gaps, targets, onDrop: onMove, onDropOn });
+    drag(down, row, { key, label, gaps, targets, onDrop: onMove, onDropOn, immediate: !!handle });
   });
 }
 
 /**
  * Lets the rows of `container` (children with data-key, or `rows` selector)
  * be dropped on targets: { targets(), label(row), onDropOn({ key, target }) }.
+ * accept(down) may refuse a drag (no target on screen: the row keeps its
+ * other gestures, a swipe for instance).
  */
-export function draggable(container, { rows = '[data-key]', targets, label, onDropOn }) {
+export function draggable(container, { rows = '[data-key]', targets, label, onDropOn, accept = () => true }) {
   container.addEventListener('pointerdown', (down) => {
-    if (down.button !== 0) return;
+    if (down.button !== 0 || !accept(down)) return;
     const row = down.target.closest(rows);
     if (!row || !container.contains(row)) return;
     if (down.target.closest('input, textarea, select, [contenteditable]')) return;

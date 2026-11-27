@@ -24,6 +24,9 @@
   background: var(--bg);
 }
 
+/* What a row is grabbed by (sortable's handle): dragging it never scrolls. */
+.drag-handle { touch-action: none; cursor: grab; color: var(--text-dim); }
+
 /* The row being dragged stays in place, faded; a ghost follows the pointer. */
 .dragging { opacity: 0.4; }
 body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }

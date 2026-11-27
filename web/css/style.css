@@ -769,6 +769,7 @@ body.selecting .task-row.selected > .task-check { border-color: var(--rp-iris); 
   .task-row { min-height: 48px; padding: 10px 8px; }
   .task-check { width: 22px; height: 22px; margin-top: 0; }
   .add-task { display: none; }
+  .detail-subtasks .add-task { display: flex; min-height: 44px; }
   .tasks { padding-bottom: calc(var(--tabbar-h) + 100px + env(safe-area-inset-bottom)); }
 
   /* On a phone the bar only shows the sync indicator, and only when it has something to say. */

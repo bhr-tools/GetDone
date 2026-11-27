@@ -1,14 +1,14 @@
 // Task detail panel: edit every field of a task, browse and add subtasks.
 // A centered dialog on desktop, a bottom sheet on phones.
 
-import { h, icon, autoGrow, isTextInput, mapsUrl } from '../dom.js';
+import { h, icon, autoGrow, isTextInput, isMobile, mapsUrl } from '../dom.js';
 import { api } from '../api.js';
 import { formatDue, recurrenceLabel, splitDue, WEEKDAYS } from '../dates.js';
 import { parseQuickAdd } from '../quickadd.js';
 import { openModal, openPopover, closePopover, menuList, confirmDialog, toast } from '/kit/js/overlay.js';
 import { datePicker } from '../ui/datepicker.js';
 import { taskRow } from './tasks.js';
-import { PRIORITY_LABELS } from './composer.js';
+import { PRIORITY_LABELS, createComposer } from './composer.js';
 import { attachmentsBlock, pickFiles, uploadFiles } from './attachments.js';
 
 const REPEAT_CHOICES = [
@@ -42,6 +42,7 @@ export class TaskDetail {
       return;
     }
     if (this.isOpen) {
+      if (!await this.dropSubtaskComposer()) return;
       await this.commitText();
       if (fromCurrent && this.task) this.history.push(this.task.id);
     } else {
@@ -56,6 +57,7 @@ export class TaskDetail {
   /** Saves the text being edited, then closes. */
   async close() {
     if (!this.modal) return;
+    if (!await this.dropSubtaskComposer()) return;
     await this.commitText();
     this.modal?.close();
   }
@@ -80,7 +82,10 @@ export class TaskDetail {
 
     this.subtaskList = h('div', { class: 'task-list compact' });
     this.subtaskCount = h('span', { class: 'group-count' });
-    this.subtaskInput = h('input', { type: 'text', class: 'input', placeholder: 'Add a subtask', maxLength: 500, autocomplete: 'off' });
+    // Subtasks are added with the task composer, like tasks in a list.
+    this.subtaskAdd = h('button', { type: 'button', class: 'add-task', onclick: () => this.openSubtaskComposer() },
+      icon('plus'), h('span', null, 'Add subtask'));
+    this.subtaskComposer = null;
     this.fields = h('div', { class: 'detail-fields' });
 
     this.title.addEventListener('input', () => {
@@ -109,16 +114,6 @@ export class TaskDetail {
       }
     });
     this.description.addEventListener('blur', () => { if (this.confirming !== this.description) this.commitDescription(); });
-    this.subtaskInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) {
-        e.preventDefault();
-        this.addSubtask();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        this.subtaskInput.value = '';
-        this.leaveField();
-      }
-    });
 
     const body = h('div', { class: 'detail' },
       h('header', { class: 'detail-header' }, this.back, this.place, h('div', { class: 'spacer' }), closeButton),
@@ -131,7 +126,7 @@ export class TaskDetail {
           h('section', { class: 'detail-subtasks' },
             h('header', { class: 'group-header' }, h('h3', { class: 'group-title' }, 'Subtasks'), this.subtaskCount),
             this.subtaskList,
-            this.subtaskInput)),
+            this.subtaskAdd)),
         this.fields));
 
     this.modal = openModal({
@@ -141,6 +136,7 @@ export class TaskDetail {
       onEscape: () => this.close(),
       onClose: () => {
         this.modal = null;
+        this.subtaskComposer = null;
         this.task = null;
         this.history = [];
       },
@@ -500,25 +496,52 @@ export class TaskDetail {
     this.leaveField();
   }
 
-  async addSubtask() {
-    const text = this.subtaskInput.value.trim();
-    if (!text) return;
-    const parsed = parseQuickAdd(text, { today: this.app.state.today });
-    try {
-      await api.tasks.create({
-        title: parsed.title || text,
-        parent_id: this.task.id,
-        priority: parsed.priority || 3,
-        due_date: parsed.dueDate,
-        recurrence: parsed.recurrence,
-        location: parsed.location,
-      });
-      this.subtaskInput.value = '';
-      await this.reload();
-      this.app.refresh();
-    } catch (err) {
-      this.app.reportError(err);
+  /** The parent and place the new subtask goes to. */
+  subtaskTarget() {
+    const t = this.task;
+    return { projectId: t.project_id, sectionId: t.section_id, parentId: t.id };
+  }
+
+  /**
+   * a / Add subtask: the task composer, inline under the subtasks on a
+   * desktop, full screen on a phone, as for tasks in a list.
+   */
+  openSubtaskComposer() {
+    if (isMobile()) {
+      this.app.openQuickAdd({ target: this.subtaskTarget(), onAdded: () => this.reload(), submitLabel: 'Add subtask' });
+      return;
     }
+    if (this.subtaskComposer) {
+      this.subtaskComposer.focusTitle();
+      return;
+    }
+    const composer = createComposer({
+      submitLabel: 'Add subtask',
+      submit: async (fields) => {
+        const created = await this.app.run(() => api.tasks.create(this.app.taskRequest(fields, this.subtaskTarget())));
+        if (!created) return false;
+        await this.reload();
+        this.app.refresh();
+        return true;
+      },
+      cancel: () => this.closeSubtaskComposer(),
+    });
+    this.subtaskComposer = composer;
+    this.subtaskAdd.hidden = true;
+    this.subtaskList.after(composer);
+    composer.focusTitle();
+  }
+
+  /** Drops the subtask being written, once confirmed: false when kept. */
+  async dropSubtaskComposer() {
+    return !this.subtaskComposer || this.subtaskComposer.requestCancel();
+  }
+
+  closeSubtaskComposer() {
+    this.subtaskComposer?.remove();
+    this.subtaskComposer = null;
+    this.subtaskAdd.hidden = false;
+    closePopover();
   }
 
   async reload() {
@@ -541,6 +564,7 @@ export class TaskDetail {
   }
 
   async goBack({ skipCommit = false } = {}) {
+    if (!await this.dropSubtaskComposer()) return;
     if (!skipCommit) await this.commitText();
     const backId = this.history.pop() || this.task?.parent_id;
     if (!backId) return this.close();
@@ -560,7 +584,7 @@ export class TaskDetail {
       this.title.setSelectionRange(this.title.value.length, this.title.value.length);
     } else if (e.key === 'a') {
       e.preventDefault();
-      this.subtaskInput.focus();
+      this.openSubtaskComposer();
     } else if (e.key === 'f') {
       e.preventDefault();
       this.attach();

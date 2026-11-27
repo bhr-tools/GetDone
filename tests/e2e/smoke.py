@@ -166,10 +166,24 @@ def desktop(browser):
     page.keyboard.press("Enter")
     page.wait_for_timeout(400)
     expect(page.locator(".field-button.due")).to_contain_text("09:00")
-    page.locator(".detail-subtasks .input").fill("Collect numbers")
+    # Subtasks use the task composer: a parsed token can be kept as text,
+    # and Escape asks before dropping what was typed.
+    page.locator(".detail-subtasks .add-task").click()
+    page.locator(".detail-subtasks .composer-title").fill("Draft tomorrow")
+    expect(page.locator(".detail-subtasks .token-chip")).to_have_count(1)
+    page.keyboard.press("Escape")
+    expect(page.locator(".modal", has_text="Discard changes?")).to_be_visible()
+    page.locator(".modal button", has_text="Keep editing").click()
+    expect(page.locator(".detail-subtasks .composer-title")).to_be_focused()
+    page.locator(".detail-subtasks .token-chip").click()
+    expect(page.locator(".detail-subtasks .token-chip")).to_have_count(0)
+    page.locator(".detail-subtasks .composer-title").fill("Collect numbers")
     page.keyboard.press("Enter")
     page.wait_for_timeout(400)
     expect(page.locator(".detail-subtasks .task-row")).to_have_count(1)
+    page.keyboard.press("Escape")
+    expect(page.locator(".detail-subtasks .composer")).to_have_count(0)
+    expect(page.locator(".detail-modal")).to_be_visible()
     # Attachments: a photo shows as a thumbnail, a PDF as a chip.
     with page.expect_file_chooser() as fc:
         page.locator(".file-add").click()

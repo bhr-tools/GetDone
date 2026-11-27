@@ -889,7 +889,7 @@ class App {
    * Quick add dialog. Without a target it adds to the current view (the FAB);
    * with inbox: true it always adds to the inbox (the q key).
    */
-  openQuickAdd({ inbox = false, target = null } = {}) {
+  openQuickAdd({ inbox = false, target = null, onAdded = null, submitLabel } = {}) {
     const s = this.state;
     if (!target) {
       if (inbox || s.view === 'inbox') target = { projectId: 'inbox' };
@@ -899,12 +899,14 @@ class App {
     let modal;
     const composer = createComposer({
       defaults: { dueDate: target.date || null },
+      submitLabel,
       submit: async (fields) => {
         const created = await this.run(() => api.tasks.create(this.taskRequest(fields, target)));
         if (!created) return false;
         modal.close();
         const where = created.project_id === 'inbox' ? 'Inbox' : created.project_name;
-        if (created.project_id !== s.projectId || s.view === 'upcoming') toast(`Task added to ${where}`, { type: 'success' });
+        if (onAdded) onAdded(created);
+        else if (created.project_id !== s.projectId || s.view === 'upcoming') toast(`Task added to ${where}`, { type: 'success' });
         await this.refresh();
         return true;
       },
